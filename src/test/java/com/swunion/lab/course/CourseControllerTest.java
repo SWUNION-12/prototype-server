@@ -1,0 +1,60 @@
+package com.swunion.lab.course;
+
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+@SpringBootTest(properties = {
+		"spring.config.import=optional:file:./build/no-such.env[.properties]",
+		"spring.datasource.url=jdbc:h2:mem:ctrltest"
+})
+@AutoConfigureMockMvc
+class CourseControllerTest {
+
+	@Autowired
+	MockMvc mvc;
+	// 컨트롤러 테스트에서는 백그라운드 발급이 실제로 돌지 않게 막는다.
+	@MockitoBean
+	CourseProvisioner provisioner;
+
+	@Test
+	void createsAndReadsCourse() throws Exception {
+		mvc.perform(post("/api/courses").with(httpBasic("instructor", "instructor"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"파이썬 기초\",\"pythonVersion\":\"3.12\",\"packages\":\"six==1.16.0\\nrich\"}"))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("LOCKING"))
+				.andExpect(jsonPath("$.packages[0]").value("six==1.16.0")).andExpect(jsonPath("$.packages[1]").value("rich"))
+				.andExpect(jsonPath("$.imageName").doesNotExist());
+		mvc.perform(get("/api/courses").with(httpBasic("instructor", "instructor"))).andExpect(status().isOk());
+	}
+
+	@Test
+	void invalidSpecIs400() throws Exception {
+		mvc.perform(post("/api/courses").with(httpBasic("instructor", "instructor"))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"x\",\"pythonVersion\":\"2.7\",\"packages\":\"six\"}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("파이썬")));
+	}
+
+	@Test
+	void unknownIdIs404() throws Exception {
+		mvc.perform(get("/api/courses/99999").with(httpBasic("instructor", "instructor")))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void requiresAuth() throws Exception {
+		mvc.perform(get("/api/courses")).andExpect(status().isUnauthorized());
+	}
+}

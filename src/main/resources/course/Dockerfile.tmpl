@@ -1,0 +1,5 @@
+FROM {{BASE_IMAGE}}
+USER root
+COPY spec/ /opt/lab/spec/
+RUN cd /opt/lab/spec && uv sync --frozen && chmod -R a+rX /opt/lab/spec && chown -R coder:coder /opt/venv /opt/uv-cache
+USER coder
