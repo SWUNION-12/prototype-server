@@ -68,3 +68,9 @@ tasks.register('llmTest', Test) {
 	}
 	shouldRunAfter tasks.named('test')
 }
+
+// JDK 26에서 테스트 JVM의 javaagent(Mockito 등)가 부트스트랩 클래스패스를 덧붙이면 CDS 경고가 나온다.
+// 테스트에서는 CDS가 필요 없으므로 끈다. 세 테스트 태스크에 공통 적용.
+tasks.withType(Test).configureEach {
+	jvmArgs '-Xshare:off'
+}
