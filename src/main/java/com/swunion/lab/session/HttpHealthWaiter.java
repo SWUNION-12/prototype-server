@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 public class HttpHealthWaiter implements HealthWaiter {
 
 	// 기본 HTTP/2 h2c 업그레이드 헤더를 보내면 code-server가 websocket upgrade로 보고 응답하지 않으므로 1.1로 고정한다.
-	// 기본값(HTTP/2 h2c 업그레이드 헤더)을 보내면 code-server가 응답하지 않아 1.1로 고정한다.
 	private final HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(1)).build();
 
 	@Override

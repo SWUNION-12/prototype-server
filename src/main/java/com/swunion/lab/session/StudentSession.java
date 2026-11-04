@@ -23,6 +23,7 @@ public class StudentSession {
 	@Column(unique = true, nullable = false, length = 64)
 	private String token;
 	private String containerId;
+	private String volumeName;
 	private Integer hostPort;
 	private String idePassword;
 	private Long startupMillis;
@@ -59,6 +60,8 @@ public class StudentSession {
 	public String getToken() { return token; }
 	public String getContainerId() { return containerId; }
 	public void setContainerId(String containerId) { this.containerId = containerId; }
+	public String getVolumeName() { return volumeName; }
+	public void setVolumeName(String volumeName) { this.volumeName = volumeName; }
 	public Integer getHostPort() { return hostPort; }
 	public void setHostPort(Integer hostPort) { this.hostPort = hostPort; }
 	public String getIdePassword() { return idePassword; }

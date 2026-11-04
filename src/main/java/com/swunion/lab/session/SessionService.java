@@ -58,15 +58,20 @@ public class SessionService {
 		}
 
 		StudentSession session = sessions.save(new StudentSession(course, name, newToken(), newPassword()));
-		String containerName = props.containerNamePrefix() + session.getId();
+		// 세션 id만으로 이름을 짓으면 DB가 초기화되어 id가 다시 1부터 시작할 때 남아 있는 옛 학생의
+		// 볼륨·컨테이너와 겹친다. 8자리 무작위 접미사로 join마다 이름을 유일하게 만든다.
+		String resourceName = props.containerNamePrefix() + session.getId() + "-" + randomSuffix();
+		session.setVolumeName(resourceName);
+		session = sessions.save(session);
+		String containerId = null;
 		try {
-			ContainerSpec spec = new ContainerSpec(containerName, course.getImageName(),
-					Map.of("PASSWORD", session.getIdePassword()), containerName, "/home/coder/project",
+			ContainerSpec spec = new ContainerSpec(resourceName, course.getImageName(),
+					Map.of("PASSWORD", session.getIdePassword()), resourceName, "/home/coder/project",
 					props.ideBindAddress(), IDE_PORT,
 					Map.of("swunion.session", String.valueOf(session.getId()), "swunion.course",
 							String.valueOf(course.getId())));
 			long t0 = System.nanoTime();
-			String containerId = docker.createAndStart(spec);
+			containerId = docker.createAndStart(spec);
 			session.setContainerId(containerId);
 			session.setHostPort(docker.hostPort(containerId, IDE_PORT));
 			session.setContainerRunning(true);
@@ -81,15 +86,25 @@ public class SessionService {
 			return session;
 		}
 		catch (RuntimeException e) {
-			log.error("세션 {} 컨테이너 생성 실패", session.getId(), e);
-			// 이름으로 지운다. createAndStart가 중간에 실패해도 반쯤 만들어진 컨테이너가 남지 않게 한다.
-			// 볼륨은 지우지 않는다. 이전 학생 코드와 이름이 겹쳤을 가능성을 배제할 수 없다.
+			long sid = session.getId();
+			log.error("세션 {} 컨테이너 생성 실패", sid, e);
+			// 이번 join이 만든 것만 지운다. 컨테이너는 id로, 볼륨은 이 join 전용 이름이라 안전하다.
+			// (createAndStart가 시작 단계에서 실패하면 게이트웨이가 스스로 컨테이너를 지운다.)
+			if (containerId != null) {
+				try {
+					docker.remove(containerId);
+				}
+				catch (RuntimeException ex) {
+					log.warn("세션 {} 컨테이너 정리 실패: {}", sid, ex.getMessage());
+				}
+			}
 			try {
-				docker.remove(containerName);
+				docker.removeVolume(resourceName);
 			}
-			catch (RuntimeException ignored) {
+			catch (RuntimeException ex) {
+				log.warn("세션 {} 볼륨 정리 실패: {}", sid, ex.getMessage());
 			}
-			sessions.deleteById(session.getId());
+			sessions.deleteById(sid);
 			throw new JoinException("컨테이너를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", 500);
 		}
 	}
@@ -132,6 +147,12 @@ public class SessionService {
 	public List<Object> issues(StudentSession s) {
 		return json.readValue(s.getIssuesJson() == null ? "[]" : s.getIssuesJson(), new TypeReference<List<Object>>() {
 		});
+	}
+
+	private String randomSuffix() {
+		byte[] b = new byte[4];
+		random.nextBytes(b);
+		return HexFormat.of().formatHex(b);
 	}
 
 	private String newToken() {

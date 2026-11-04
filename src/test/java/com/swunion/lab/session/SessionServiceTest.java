@@ -32,6 +32,8 @@ class SessionServiceTest {
 	SessionRepository sessions;
 	@Autowired
 	CourseRepository courses;
+	@Autowired
+	jakarta.persistence.EntityManager em;
 
 	FakeDocker docker = new FakeDocker();
 	boolean healthy = true;
@@ -72,8 +74,9 @@ class SessionServiceTest {
 		assertThat(a.isNeedsHelp()).isFalse();
 
 		ContainerSpec spec = docker.specs.get(0);
-		assertThat(spec.name()).isEqualTo("swunion-test-s" + a.getId());
-		assertThat(spec.volumeName()).isEqualTo("swunion-test-s" + a.getId());
+		assertThat(spec.name()).matches("swunion-test-s" + a.getId() + "-[0-9a-f]{8}");
+		assertThat(spec.volumeName()).isEqualTo(spec.name()).isEqualTo(a.getVolumeName());
+		assertThat(sessions.findById(a.getId()).orElseThrow().getVolumeName()).isEqualTo(spec.volumeName());
 		assertThat(spec.image()).isEqualTo("t/course-1:1");
 		assertThat(spec.env()).containsEntry("PASSWORD", a.getIdePassword());
 		assertThat(spec.bindAddress()).isEqualTo("127.0.0.1");
@@ -115,11 +118,43 @@ class SessionServiceTest {
 	}
 
 	@Test
-	void containerFailureDeletesRowAndRemovesContainer() {
+	void createFailureDeletesRowAndRemovesVolume() {
 		docker.failCreate = true;
 		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class)
 				.hasMessageContaining("컨테이너를 만들지 못했습니다");
 		assertThat(sessions.count()).isZero();
+		// 컨테이너는 만들어지지 않았으므로 id로 지울 것이 없고, 이 join 전용 볼륨만 지운다.
+		assertThat(docker.removed).isEmpty();
+		assertThat(docker.removedVolumes).singleElement().asString().matches("swunion-test-s\\d+-[0-9a-f]{8}");
+	}
+
+	@Test
+	void failureAfterCreateRemovesContainerByIdAndVolume() {
+		docker.failHostPort = true;
+		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class);
+		assertThat(sessions.count()).isZero();
+		assertThat(docker.removed).containsExactly("c" + docker.specs.get(0).labels().get("swunion.session"));
+		assertThat(docker.removedVolumes).containsExactly(docker.specs.get(0).volumeName());
+	}
+
+	@Test
+	void sameSessionIdAfterIdResetGetsDifferentNames() {
+		StudentSession first = service.join("ABC123", "철수");
+		long firstId = first.getId();
+		String firstName = first.getVolumeName();
+		sessions.deleteAll();
+		sessions.flush();
+		em.createNativeQuery("ALTER TABLE student_session ALTER COLUMN id RESTART WITH " + firstId).executeUpdate();
+		StudentSession second = service.join("ABC123", "영희");
+		assertThat(second.getId()).isEqualTo(firstId);
+		assertThat(second.getVolumeName()).isNotEqualTo(firstName);
+		assertThat(docker.specs.get(1).name()).isNotEqualTo(docker.specs.get(0).name());
+	}
+
+	@Test
+	void specToStringMasksEnvValues() {
+		StudentSession s = service.join("ABC123", "철수");
+		assertThat(docker.specs.get(0).toString()).contains("PASSWORD=***").doesNotContain(s.getIdePassword());
 	}
 
 	@Test
@@ -163,7 +198,9 @@ class SessionServiceTest {
 		final Map<String, Integer> ports = new HashMap<>();
 		final List<String> restarted = new ArrayList<>();
 		final List<String> removed = new ArrayList<>();
+		final List<String> removedVolumes = new ArrayList<>();
 		boolean failCreate;
+		boolean failHostPort;
 		int nextPort = 40000;
 
 		public String createAndStart(ContainerSpec spec) {
@@ -176,7 +213,12 @@ class SessionServiceTest {
 			return id;
 		}
 
-		public int hostPort(String id, int containerPort) { return ports.get(id); }
+		public int hostPort(String id, int containerPort) {
+			if (failHostPort) {
+				throw new DockerOperationException("no port");
+			}
+			return ports.get(id);
+		}
 		public void restart(String id) { restarted.add(id); }
 		public boolean isRunning(String id) { return true; }
 		public void remove(String id) { removed.add(id); }
@@ -186,7 +228,7 @@ class SessionServiceTest {
 		public ExecResult exec(String id, List<String> c, Duration t) { throw new UnsupportedOperationException(); }
 		public ExecResult exec(String id, List<String> c, String w, Duration t) { throw new UnsupportedOperationException(); }
 		public void stop(String id) { }
-		public void removeVolume(String v) { }
+		public void removeVolume(String v) { removedVolumes.add(v); }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}
 }

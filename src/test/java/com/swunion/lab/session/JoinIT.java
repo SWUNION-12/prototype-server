@@ -120,7 +120,10 @@ class JoinIT {
 				catch (RuntimeException ignored) {
 				}
 				try {
-					docker.removeVolume(NAME_PREFIX + s.getId());
+					// 영속된 이름만 지운다. 테스트 접두사 아래의 이름일 때만 허용한다.
+					if (s.getVolumeName() != null && s.getVolumeName().startsWith(NAME_PREFIX)) {
+						docker.removeVolume(s.getVolumeName());
+					}
 				}
 				catch (RuntimeException ignored) {
 				}
