@@ -23,11 +23,14 @@ import org.springframework.test.context.DynamicPropertySource;
 @Tag("integration")
 @SpringBootTest(properties = {
 		"spring.config.import=optional:file:./build/no-such.env[.properties]",
-		"spring.datasource.url=jdbc:h2:mem:provit"
+		"spring.datasource.url=jdbc:h2:mem:provit",
+		// 실서버의 수업 이미지(swunion/course-*)와 겹치지 않는 테스트 전용 접두사
+		"lab.course-image-prefix=" + CourseProvisioningIT.PREFIX
 })
 class CourseProvisioningIT {
 
 	private static final Logger log = LoggerFactory.getLogger(CourseProvisioningIT.class);
+	static final String PREFIX = "swunion-it/course-";
 	static final Path DATA_DIR;
 
 	static {
@@ -53,19 +56,14 @@ class CourseProvisioningIT {
 
 	@Test
 	void provisionsRealCourse() throws Exception {
-		// 인메모리 DB라 id가 1부터 다시 시작해 이전 실행의 이미지 태그와 겹칠 수 있다.
-		// 남은 이미지 때문에 빌드 없이 통과하지 않도록, 다음 id의 태그를 미리 지운다.
-		// id는 create 전에 알 수 없으므로 create 직후 빌드가 끝나기 전에 지울 수 없다. 그래서 id 1~3 태그를 먼저 정리한다.
+		// 테스트 전용 접두사 아래의 이전 이미지만 지운다. 실서비스 접두사는 건드리지 않는다.
 		for (int i = 1; i <= 3; i++) {
-			try {
-				client.removeImageCmd("swunion/course-" + i + ":1").withForce(true).exec();
-			}
-			catch (RuntimeException ignored) {
-			}
+			removeQuietly(PREFIX + i + ":1");
 		}
 		Course created = service.create("통합 테스트 수업", "3.12", "six==1.16.0");
 		long id = created.getId();
-		String tag = "swunion/course-" + id + ":1";
+		String tag = PREFIX + id + ":1";
+		try {
 		long t0 = System.nanoTime();
 
 		Course c = null;
@@ -117,6 +115,18 @@ class CourseProvisioningIT {
 			}
 			catch (RuntimeException ignored) {
 			}
+		}
+		}
+		finally {
+			removeQuietly(tag);
+		}
+	}
+
+	private void removeQuietly(String tag) {
+		try {
+			client.removeImageCmd(tag).withForce(true).exec();
+		}
+		catch (RuntimeException ignored) {
 		}
 	}
 }

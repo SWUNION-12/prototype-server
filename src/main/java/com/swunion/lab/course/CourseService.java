@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
@@ -37,7 +38,15 @@ public class CourseService {
 		String normalized = packages.stream().map(PackageSpec::toLine).collect(Collectors.joining("\n"));
 		Course course = repo.save(new Course(cleanName, python, normalized));
 		long id = course.getId();
-		executor.execute(() -> provisioner.provision(id));
+		try {
+			executor.execute(() -> provisioner.provision(id));
+		}
+		catch (TaskRejectedException e) {
+			// 큐가 가득 차면 저장된 행이 LOCKING에 갇히므로 바로 FAILED로 돌린다.
+			course.setStatus(CourseStatus.FAILED);
+			course.setErrorSummary("서버가 바빠 발급을 시작하지 못했습니다. 다시 시도해 주세요");
+			course = repo.save(course);
+		}
 		return course;
 	}
 

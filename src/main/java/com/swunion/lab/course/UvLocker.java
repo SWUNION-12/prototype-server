@@ -54,7 +54,7 @@ public class UvLocker {
 			return new LockResult(false, "uv lock이 중단되었습니다.");
 		}
 		catch (IOException e) {
-			return new LockResult(false, "uv를 실행하지 못했습니다: " + e.getMessage());
+			return new LockResult(false, "uv를 실행하지 못했습니다. 서버에 uv가 설치되어 있는지 확인해 주세요.");
 		}
 		finally {
 			if (errFile != null) {

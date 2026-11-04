@@ -18,3 +18,4 @@ lab:
   ide-bind-address: ${IDE_BIND_ADDRESS:127.0.0.1}
   data-dir: ./data
   base-image: swunion/lab-base:1
+  course-image-prefix: swunion/course-

@@ -38,7 +38,8 @@ class CourseProvisionerTest {
 
 	@BeforeEach
 	void setUp() {
-		var props = new LabProperties("i", "p", "m", 15, "http://x", "127.0.0.1", dataDir, "swunion/lab-base:1");
+		var props = new LabProperties("i", "p", "m", 15, "http://x", "127.0.0.1", dataDir, "swunion/lab-base:1",
+				"swunion-test/course-");
 		provisioner = new CourseProvisioner(repo, docker, locker, props, json);
 		when(docker.imageExists("swunion/lab-base:1")).thenReturn(true);
 	}
@@ -70,7 +71,7 @@ class CourseProvisionerTest {
 		Course after = repo.findById(c.getId()).orElseThrow();
 		assertThat(after.getStatus()).isEqualTo(CourseStatus.READY);
 		assertThat(after.getEntryCode()).matches("[A-Z0-9]{6}");
-		assertThat(after.getImageName()).isEqualTo("swunion/course-" + c.getId() + ":1");
+		assertThat(after.getImageName()).isEqualTo("swunion-test/course-" + c.getId() + ":1");
 		Map<String, String> baseline = json.readValue(after.getBaselineJson(),
 				new tools.jackson.core.type.TypeReference<Map<String, String>>() {
 				});
@@ -97,6 +98,55 @@ class CourseProvisionerTest {
 		Course after = repo.findById(c.getId()).orElseThrow();
 		assertThat(after.getStatus()).isEqualTo(CourseStatus.FAILED);
 		assertThat(after.getErrorSummary()).contains("빌드 깨짐");
+	}
+
+	@Test
+	void nullMessageExceptionGivesGenericSummary() {
+		when(locker.lock(any())).thenThrow(new IllegalStateException());
+		Course c = newCourse();
+		provisioner.provision(c.getId());
+		Course after = repo.findById(c.getId()).orElseThrow();
+		assertThat(after.getStatus()).isEqualTo(CourseStatus.FAILED);
+		assertThat(after.getErrorSummary()).isNotBlank().doesNotContain("null");
+	}
+
+	@Test
+	void unexpectedExceptionDetailStaysOutOfSummary() {
+		when(locker.lock(any())).thenThrow(new RuntimeException("boom " + dataDir + "/secret"));
+		Course c = newCourse();
+		provisioner.provision(c.getId());
+		assertThat(repo.findById(c.getId()).orElseThrow().getErrorSummary()).doesNotContain(dataDir.toString())
+				.doesNotContain("boom");
+	}
+
+	@Test
+	void lockErrorPathsAreScrubbed() {
+		Path spec = dataDir.resolve("courses").resolve("1").resolve("spec");
+		when(locker.lock(any())).thenReturn(new LockResult(false, "error in " + spec + "/pyproject.toml urllib3"));
+		Course c = newCourse();
+		provisioner.provision(c.getId());
+		String summary = repo.findById(c.getId()).orElseThrow().getErrorSummary();
+		assertThat(summary).contains("urllib3").doesNotContain(dataDir.toString());
+	}
+
+	@Test
+	void scrubReplacesPathsAndHandlesNull() {
+		long id = 5;
+		String spec = provisioner.specDir(id).toAbsolutePath().normalize().toString();
+		assertThat(provisioner.scrub("x " + spec + "/pyproject.toml", id)).isEqualTo("x <spec>/pyproject.toml");
+		assertThat(provisioner.scrub(dataDir.toAbsolutePath().normalize() + "/other", id)).isEqualTo("<data>/other");
+		assertThat(provisioner.scrub(null, id)).doesNotContain("null").isNotBlank();
+	}
+
+	@Test
+	void buildFailureShowsScrubbedLogTail() {
+		when(locker.lock(any())).thenReturn(new LockResult(true, null));
+		when(docker.buildImage(any(), anyString(), any()))
+				.thenThrow(new DockerOperationException("이미지 빌드 실패:\nstep failed in " + dataDir.toAbsolutePath().normalize()));
+		Course c = newCourse();
+		provisioner.provision(c.getId());
+		String summary = repo.findById(c.getId()).orElseThrow().getErrorSummary();
+		assertThat(summary).contains("step failed").doesNotContain(dataDir.toString());
 	}
 
 	@Test

@@ -13,5 +13,6 @@ public record LabProperties(
 		String publicBaseUrl,
 		String ideBindAddress,
 		@DefaultValue("./data") Path dataDir,
-		@DefaultValue("swunion/lab-base:1") String baseImage) {
+		@DefaultValue("swunion/lab-base:1") String baseImage,
+		@DefaultValue("swunion/course-") String courseImagePrefix) {
 }

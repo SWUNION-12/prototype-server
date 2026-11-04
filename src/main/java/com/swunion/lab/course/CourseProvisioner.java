@@ -2,6 +2,7 @@ package com.swunion.lab.course;
 
 import com.swunion.lab.config.LabProperties;
 import com.swunion.lab.docker.DockerGateway;
+import com.swunion.lab.docker.DockerOperationException;
 import com.swunion.lab.docker.ExecResult;
 import java.io.IOException;
 import java.io.InputStream;
@@ -61,8 +62,9 @@ public class CourseProvisioner {
 			run(course);
 		}
 		catch (Throwable t) {
+			// 예외 원문에는 경로나 Docker 내부 정보가 섞일 수 있어 강사에게는 일반 문구만 보이고, 상세는 서버 로그에만 남긴다.
 			log.error("수업 {} 발급 실패", courseId, t);
-			fail(course, "수업 발급 중 오류가 발생했습니다: " + t.getMessage());
+			fail(course, "내부 오류로 수업 발급에 실패했습니다. 서버 로그를 확인해 주세요.");
 		}
 	}
 
@@ -80,17 +82,25 @@ public class CourseProvisioner {
 
 		LockResult lock = locker.lock(specDir);
 		if (!lock.ok()) {
-			fail(course, "패키지 해석(uv lock)에 실패했습니다:\n" + lock.errorSummary());
+			fail(course, "패키지 해석(uv lock)에 실패했습니다:\n" + scrub(lock.errorSummary(), id));
 			return;
 		}
 
 		course.setStatus(CourseStatus.BUILDING);
 		repo.save(course);
-		String tag = "swunion/course-" + id + ":1";
+		String tag = props.courseImagePrefix() + id + ":1";
 		renderDockerfile(courseDir(id));
 		long start = System.nanoTime();
-		docker.buildImage(courseDir(id), tag, line -> {
-		});
+		try {
+			docker.buildImage(courseDir(id), tag, line -> {
+			});
+		}
+		catch (DockerOperationException e) {
+			// 빌드 로그 끝부분은 강사에게 유용하므로 경로만 지우고 보여준다.
+			log.error("수업 {} 이미지 빌드 실패", id, e);
+			fail(course, "이미지 빌드에 실패했습니다:\n" + scrub(e.getMessage(), id));
+			return;
+		}
 		log.info("수업 {} 이미지 빌드 완료: {}초", id, Duration.ofNanos(System.nanoTime() - start).toSeconds());
 		course.setImageName(tag);
 
@@ -98,7 +108,7 @@ public class CourseProvisioner {
 				List.of("uv", "pip", "list", "--python", "/opt/venv/bin/python", "--format", "json"),
 				Duration.ofSeconds(60));
 		if (list.exitCode() != 0) {
-			fail(course, "설치된 패키지 목록을 읽지 못했습니다:\n" + tail(list.stderr()));
+			fail(course, "설치된 패키지 목록을 읽지 못했습니다:\n" + scrub(tail(list.stderr()), id));
 			return;
 		}
 		course.setBaselineJson(json.writeValueAsString(parseBaseline(list.stdout())));
@@ -136,6 +146,30 @@ public class CourseProvisioner {
 				return sb.toString();
 			}
 		}
+	}
+
+	/** 호스트의 절대 경로를 짧은 표시로 바꾼다. 긴 경로부터 바꿔야 짧은 경로가 먼저 잘라먹지 않는다. */
+	String scrub(String text, long id) {
+		String s = text == null || text.isBlank() ? "(상세 메시지 없음)" : text;
+		java.util.Map<Path, String> paths = new java.util.LinkedHashMap<>();
+		paths.put(specDir(id), "<spec>");
+		paths.put(courseDir(id), "<course>");
+		paths.put(props.dataDir(), "<data>");
+		for (var e : paths.entrySet()) {
+			Path abs = e.getKey().toAbsolutePath().normalize();
+			java.util.Set<String> variants = new java.util.LinkedHashSet<>();
+			variants.add(abs.toString());
+			try {
+				variants.add(abs.toRealPath().toString());
+			}
+			catch (IOException | RuntimeException ignored) {
+				// 아직 없는 경로는 실제 경로를 구할 수 없다.
+			}
+			for (String v : variants) {
+				s = s.replace(v, e.getValue());
+			}
+		}
+		return s;
 	}
 
 	private void fail(Course course, String summary) {
