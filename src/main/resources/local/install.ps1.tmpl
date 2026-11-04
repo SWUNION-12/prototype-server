@@ -28,6 +28,7 @@ function Invoke-SwunionInstall {
 
   Write-Output "[2/4] 수업 파일 내려받기: $Dir"
   try {
+    $ProgressPreference = 'SilentlyContinue'
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     Set-Location -Path $Dir
     foreach ($f in 'pyproject.toml', 'uv.lock', '.python-version', 'verify.py') {
@@ -48,6 +49,9 @@ function Invoke-SwunionInstall {
   }
 
   Write-Output '[4/4] 설치 검증'
-  uv run --frozen python verify.py
+  # verify.py가 블록을 못 찍고 죽는 경우(예: 인터프리터 오류)에도 학생이 붙여넣을 블록이 있게 한다.
+  $out = uv run --frozen python verify.py 2>&1 | ForEach-Object { "$_" }
+  $out | ForEach-Object { Write-Output $_ }
+  if (-not ($out -contains '---SWUNION-VERIFY-END---')) { Write-FailBlock 'Crashed' }
 }
 Invoke-SwunionInstall

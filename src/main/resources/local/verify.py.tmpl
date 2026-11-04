@@ -9,6 +9,13 @@ try:
 except ImportError:  # 3.8 미만은 지원하지 않는다.
     md = None
 
+PD = None
+if md is not None and hasattr(md, "packages_distributions"):
+    try:
+        PD = md.packages_distributions()  # 한 번만 계산한다.
+    except Exception:
+        PD = None
+
 EXPECTED = json.loads(r'''{{EXPECTED_JSON}}''')
 
 
@@ -32,10 +39,9 @@ def emit(ok, python=None, passed=None, total=None, failed=()):
 def modules_for(dist, name):
     # 1) packages_distributions (3.10+)  2) top_level.txt  3) 이름의 -를 _로
     mods = []
-    pd = getattr(md, "packages_distributions", None)
-    if pd is not None:
+    if PD:
         try:
-            for mod, dists in pd().items():
+            for mod, dists in PD.items():
                 if name in [norm(d) for d in dists]:
                     mods.append(mod)
         except Exception:
@@ -80,7 +86,9 @@ def main():
                 __import__(mod)
                 imported = True
                 break
-            except Exception:
+            except KeyboardInterrupt:
+                raise
+            except BaseException:  # 라이브러리의 SystemExit도 블록 출력을 막지 못하게 한다.
                 continue
         if not imported:
             failed.append(name + ":ImportError")
@@ -89,4 +97,9 @@ def main():
     emit(not failed, py, passed, len(EXPECTED), failed)
 
 
-main()
+try:
+    main()
+except KeyboardInterrupt:
+    raise
+except BaseException:
+    emit(False, failed=["verify:Crashed"])

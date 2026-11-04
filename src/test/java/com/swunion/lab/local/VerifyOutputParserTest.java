@@ -63,6 +63,7 @@ class VerifyOutputParserTest {
 		assertInvalid(B + "verify=ok\npython=3.12.7\npackages=3/2\n" + E);
 		assertInvalid(B + "verify=fail\nfailed=numpy:Import Error\n" + E);
 		assertInvalid(B + "verify=fail\nfailed=numpy\n" + E);
+		assertInvalid(B + "verify=fail\nfailed=" + String.join(",", java.util.Collections.nCopies(51, "a:B")) + "\n" + E);
 		assertInvalid(B + "python=3.12.7\n" + E);
 		assertInvalid(B + "verify=ok\nverify=ok\n" + E);
 		assertInvalid(B + "verify=ok\nfailed=numpy:ImportError\n" + E);

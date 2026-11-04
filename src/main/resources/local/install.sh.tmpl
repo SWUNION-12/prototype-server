@@ -42,4 +42,10 @@ if ! uv sync --frozen </dev/null; then
 fi
 
 echo "[4/4] 설치 검증"
-uv run --frozen python verify.py </dev/null
+# verify.py가 블록을 못 찍고 죽는 경우에도 학생이 붙여넣을 블록이 있게 한다.
+VERIFY_OUT="$(uv run --frozen python verify.py </dev/null 2>&1)"
+printf '%s\n' "$VERIFY_OUT"
+case "$VERIFY_OUT" in
+  *---SWUNION-VERIFY-END---*) ;;
+  *) printf '%s\n' '---SWUNION-VERIFY-BEGIN---' 'verify=fail' 'failed=verify:Crashed' '---SWUNION-VERIFY-END---' ;;
+esac

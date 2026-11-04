@@ -25,7 +25,7 @@ class InstallScriptRendererTest {
 				"http://192.168.0.5:8080", TOKEN, "swunion-course-", "command -v uv",
 				"curl -LsSf https://astral.sh/uv/install.sh | sh", "$HOME/.local/bin",
 				"failed=install:$1", "fail_block UvSyncFailed", "---SWUNION-VERIFY-BEGIN---");
-		assertThat(s).contains("7");
+		assertThat(s).contains("COURSE_ID=\"7\"");
 	}
 
 	@Test
@@ -45,7 +45,7 @@ class InstallScriptRendererTest {
 		assertThat(r.installCommand("windows", TOKEN)).isEqualTo(
 				"powershell -ExecutionPolicy ByPass -c \"irm http://192.168.0.5:8080/l/" + TOKEN + "/install.ps1 | iex\"");
 		String win = r.diagnoseCommand("windows");
-		assertThat(win).contains("PROCESSOR_ARCHITECTURE", "x86_64", "arm64", "os=windows");
+		assertThat(win).contains("PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "x86_64", "arm64", "os=windows");
 		assertThat(win).doesNotContain("\n");
 		assertThat(r.diagnoseCommand("macos")).doesNotContain("\n");
 		assertThatThrownBy(() -> r.diagnoseCommand("linux")).isInstanceOf(IllegalArgumentException.class);
@@ -53,6 +53,8 @@ class InstallScriptRendererTest {
 
 	@Test
 	void rejectsUnsafeValues() {
+		assertThatThrownBy(() -> r.verifyPy(Map.of("six", "1.0'"))).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> r.verifyPy(Map.of("six", "1.0\\"))).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> r.installSh("abc\"; rm -rf ~; \"", 1)).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> new InstallScriptRenderer("http://x\"; rm -rf ~; \"").installSh(TOKEN, 1))
 				.isInstanceOf(IllegalStateException.class);
@@ -74,8 +76,10 @@ class InstallScriptRendererTest {
 		Map<String, String> expected = new LinkedHashMap<>();
 		expected.put("scikit-learn", "1.5.2");
 		expected.put("six", null);
+		expected.put("torch", "2.3.0+cpu");
+		expected.put("pytz", "1!2.0");
 		String py = r.verifyPy(expected);
-		assertThat(py).contains("\"scikit-learn\": \"1.5.2\"", "\"six\": null", "---SWUNION-VERIFY-BEGIN---");
+		assertThat(py).contains("\"scikit-learn\": \"1.5.2\"", "\"six\": null", "\"torch\": \"2.3.0+cpu\"", "\"pytz\": \"1!2.0\"", "---SWUNION-VERIFY-BEGIN---");
 		Path dir = Files.createTempDirectory("verifypy");
 		Path f = dir.resolve("verify.py");
 		Files.writeString(f, py);

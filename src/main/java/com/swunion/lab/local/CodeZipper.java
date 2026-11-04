@@ -8,6 +8,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
 
 /** docker cp가 준 tar(맨 앞 폴더 project/)를 학생이 받을 zip으로 바꾼다. */
 public final class CodeZipper {
@@ -23,7 +24,10 @@ public final class CodeZipper {
 		TarArchiveInputStream in = new TarArchiveInputStream(tar);
 		for (TarArchiveEntry e; (e = in.getNextEntry()) != null;) {
 			// 심볼릭 링크와 장치 파일은 담지 않는다. 폴더는 파일 경로로 자연히 만들어진다.
-			if (!e.isFile()) {
+			// commons-compress 1.28은 심볼릭 링크·하드 링크·FIFO에도 isFile()이 true라서 링크 플래그로 직접 거른다.
+			byte flag = e.getLinkFlag();
+			if ((flag != TarConstants.LF_NORMAL && flag != TarConstants.LF_OLDNORM) || e.isSymbolicLink()
+					|| e.isLink() || e.isDirectory()) {
 				continue;
 			}
 			String rel = relativePath(e.getName());

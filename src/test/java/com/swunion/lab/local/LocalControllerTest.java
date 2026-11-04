@@ -89,12 +89,9 @@ class LocalControllerTest {
 		c.setStatus(CourseStatus.READY);
 		c.setBaselineJson("{\"scikit-learn\":\"1.5.2\",\"six\":\"1.16.0\",\"numpy\":\"2.0.0\"}");
 		course = courses.save(c);
-		token = "c0de".repeat(16);
-		StudentSession s = new StudentSession(course, "철수", token, "pw");
-		s.setContainerId("cid-1");
 		// 토큰은 unique라 테스트마다 새 값이 필요하다.
 		token = String.format("%064x", System.nanoTime());
-		s = new StudentSession(course, "철수", token, "pw");
+		StudentSession s = new StudentSession(course, "철수", token, "pw");
 		s.setContainerId("cid-1");
 		session = sessions.save(s);
 		Path spec = courseService.specDir(course.getId());

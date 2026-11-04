@@ -11,6 +11,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
 import org.junit.jupiter.api.Test;
 
 class CodeZipperTest {
@@ -34,6 +35,35 @@ class CodeZipperTest {
 			in.getNextEntry();
 			assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("content of project/hello.py");
 		}
+	}
+
+	@Test
+	void skipsLinksFifoAbsoluteAndNormalizesDotPrefix() throws Exception {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (TarArchiveOutputStream t = new TarArchiveOutputStream(out)) {
+			TarArchiveEntry sym = new TarArchiveEntry("project/sym", TarConstants.LF_SYMLINK);
+			sym.setLinkName("/etc/passwd");
+			t.putArchiveEntry(sym);
+			t.closeArchiveEntry();
+			TarArchiveEntry hard = new TarArchiveEntry("project/hard", TarConstants.LF_LINK);
+			hard.setLinkName("project/hello.py");
+			t.putArchiveEntry(hard);
+			t.closeArchiveEntry();
+			t.putArchiveEntry(new TarArchiveEntry("project/fifo", TarConstants.LF_FIFO));
+			t.closeArchiveEntry();
+			for (String p : new String[] { "/abs/evil.txt", "./project/x.py" }) {
+				byte[] d = "x".getBytes(StandardCharsets.UTF_8);
+				TarArchiveEntry e = new TarArchiveEntry(p);
+				e.setSize(d.length);
+				t.putArchiveEntry(e);
+				t.write(d);
+				t.closeArchiveEntry();
+			}
+		}
+		ByteArrayOutputStream zip = new ByteArrayOutputStream();
+		CodeZipper.tarToZip(new ByteArrayInputStream(out.toByteArray()), zip, "course-1");
+		// commons-compress가 이름 앞의 /를 이미 떼므로 절대 경로는 루트 폴더 아래로 갇힌다.
+		assertThat(names(zip.toByteArray())).containsExactly("course-1/abs/evil.txt", "course-1/x.py");
 	}
 
 	private static byte[] tar(String... paths) throws Exception {

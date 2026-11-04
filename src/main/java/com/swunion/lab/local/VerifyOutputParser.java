@@ -82,6 +82,10 @@ public final class VerifyOutputParser {
 				}
 				case "failed" -> {
 					hasFailed = true;
+					// failedJson 컬럼(4000자)을 넘기지 않도록 항목 수와 길이를 제한한다.
+					if (value.length() > 1500 || value.split(",", -1).length > 50) {
+						throw bad("failed 항목이 너무 많습니다.");
+					}
 					for (String item : value.split(",", -1)) {
 						if (!FAILED_ITEM.matcher(item).matches()) {
 							throw bad("failed 값이 올바르지 않습니다.");

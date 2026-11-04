@@ -20,11 +20,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class LocalService {
+
+	private static final Logger log = LoggerFactory.getLogger(LocalService.class);
 
 	/** 이 이름만 내려준다. 요청 값으로 경로를 만들지 않고 이 집합에서 고른 상수로만 파일을 연다. */
 	static final Set<String> SPEC_FILES = Set.of("pyproject.toml", "uv.lock", ".python-version");
@@ -147,7 +151,8 @@ public class LocalService {
 			CodeZipper.tarToZip(tar, out, "course-" + s.getCourse().getId());
 		}
 		catch (RuntimeException | IOException e) {
-			throw new CodeUnavailableException("클라우드 코드를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+			log.warn("세션 {} 코드 zip 생성 실패", s.getId(), e);
+			throw new CodeUnavailableException("클라우드 코드를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.", e);
 		}
 		return out.toByteArray();
 	}

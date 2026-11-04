@@ -19,6 +19,8 @@ public class InstallScriptRenderer {
 
 	private static final Pattern SAFE_BASE = Pattern.compile("^https?://[A-Za-z0-9.\\-:\\[\\]]+(/[A-Za-z0-9._~\\-/]*)?$");
 	private static final Pattern SAFE_TOKEN = Pattern.compile("^[0-9a-f]{1,64}$");
+	// PEP 440의 로컬 버전(+)과 epoch(!)를 허용한다. 둘 다 verify.py의 r'''...''' 안 JSON에서 무해하다.
+	private static final Pattern SAFE_VERSION = Pattern.compile("^[A-Za-z0-9._+!-]+$");
 	private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
 
 	private final String baseUrl;
@@ -46,7 +48,7 @@ public class InstallScriptRenderer {
 					+ "echo python=${v:-none}";
 			// Microsoft Store 별칭은 stdout에 버전 모양을 내지 않으므로 정규식에 걸리지 않아 none이 된다.
 			// 지원하지 않는 CPU(x86 등)는 바꾸지 않고 그대로 출력해 서버 검사가 거부하게 한다.
-			case "windows" -> "\"os=windows\"; $a=$env:PROCESSOR_ARCHITECTURE; "
+			case "windows" -> "\"os=windows\"; $a=$env:PROCESSOR_ARCHITEW6432; if(-not $a){$a=$env:PROCESSOR_ARCHITECTURE}; "
 					+ "if($a -eq 'AMD64'){$a='x86_64'}elseif($a -eq 'ARM64'){$a='arm64'}; \"arch=$a\"; $v='none'; "
 					+ "try{$o=\"$(& python -c 'import sys;print(*sys.version_info[:3],sep=chr(46))' 2>$null)\"; "
 					+ "if($o -match '^\\d+\\.\\d+\\.\\d+$'){$v=$o}}catch{}; \"python=$v\"";
@@ -93,7 +95,7 @@ public class InstallScriptRenderer {
 		for (var e : expectedDirect.entrySet()) {
 			String name = e.getKey();
 			String version = e.getValue();
-			if (!SAFE_ID.matcher(name).matches() || (version != null && !SAFE_ID.matcher(version).matches())) {
+			if (!SAFE_ID.matcher(name).matches() || (version != null && !SAFE_VERSION.matcher(version).matches())) {
 				throw new IllegalArgumentException("verify.py에 넣을 수 없는 값입니다.");
 			}
 			json.append(first ? "" : ", ").append('"').append(name).append("\": ")
