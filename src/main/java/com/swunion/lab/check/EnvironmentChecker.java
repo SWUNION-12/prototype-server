@@ -22,6 +22,7 @@ public class EnvironmentChecker {
 
 	private static final Logger log = LoggerFactory.getLogger(EnvironmentChecker.class);
 	static final Duration EXEC_TIMEOUT = Duration.ofSeconds(20);
+	// 8080으로 ESTABLISHED인 연결은 전부 "IDE 접속"으로 센다. 서버가 거는 프로브는 짧게 열고 닫아야 한다.
 	static final int IDE_PORT = 8080;
 
 	private final DockerGateway docker;
@@ -56,38 +57,46 @@ public class EnvironmentChecker {
 
 	private Observed observe(StudentSession s) {
 		String id = s.getContainerId();
-		if (id == null || !safeRunning(id)) {
+		if (id == null || !safeRunning(s.getId(), id)) {
 			return new Observed(false, null, null, 0);
 		}
-		return new Observed(true, pythonVersion(id), installed(id), ideConnections(id));
+		long sid = s.getId() == null ? -1 : s.getId();
+		return new Observed(true, pythonVersion(sid, id), installed(sid, id), ideConnections(sid, id));
 	}
 
-	private boolean safeRunning(String id) {
+	private boolean safeRunning(Long sid, String id) {
 		try {
 			return docker.isRunning(id);
 		}
 		catch (RuntimeException e) {
+			log.warn("점검 실패 session={} cmd=isRunning: {}", sid, e.getMessage());
 			return false;
 		}
 	}
 
-	private String pythonVersion(String id) {
+	private String pythonVersion(long sid, String id) {
 		try {
 			ExecResult r = docker.exec(id, List.of("/opt/venv/bin/python", "-c",
 					"import platform;print(platform.python_version())"), EXEC_TIMEOUT);
 			String out = r.stdout() == null ? "" : r.stdout().trim();
-			return r.exitCode() == 0 && !out.isEmpty() ? out : null;
+			if (r.exitCode() != 0 || out.isEmpty()) {
+				log.warn("점검 실패 session={} cmd=python-version exit={}", sid, r.exitCode());
+				return null;
+			}
+			return out;
 		}
 		catch (RuntimeException e) {
+			log.warn("점검 실패 session={} cmd=python-version: {}", sid, e.getMessage());
 			return null;
 		}
 	}
 
-	private Map<String, String> installed(String id) {
+	private Map<String, String> installed(long sid, String id) {
 		try {
 			ExecResult r = docker.exec(id, List.of("uv", "pip", "list", "--python", "/opt/venv/bin/python",
 					"--format", "json"), EXEC_TIMEOUT);
 			if (r.exitCode() != 0) {
+				log.warn("점검 실패 session={} cmd=uv-pip-list exit={}", sid, r.exitCode());
 				return null;
 			}
 			List<Map<String, String>> list = json.readValue(r.stdout(), new TypeReference<List<Map<String, String>>>() {
@@ -99,17 +108,19 @@ public class EnvironmentChecker {
 			return m;
 		}
 		catch (RuntimeException e) {
+			log.warn("점검 실패 session={} cmd=uv-pip-list: {}", sid, e.getMessage());
 			return null;
 		}
 	}
 
-	private int ideConnections(String id) {
+	private int ideConnections(long sid, String id) {
 		try {
 			// tcp6가 없으면 비정상 종료할 수 있지만 stdout에 나온 만큼은 센다.
 			ExecResult r = docker.exec(id, List.of("cat", "/proc/net/tcp", "/proc/net/tcp6"), EXEC_TIMEOUT);
 			return TcpConnections.countEstablished(r.stdout(), IDE_PORT);
 		}
 		catch (RuntimeException e) {
+			log.warn("점검 실패 session={} cmd=proc-net-tcp: {}", sid, e.getMessage());
 			return 0;
 		}
 	}
@@ -117,25 +128,25 @@ public class EnvironmentChecker {
 	/** 세션의 최신 상태를 갱신하고, 이전 결과와 달라졌을 때만 이력 행을 추가한다. */
 	public CheckResult checkAndRecord(StudentSession session) {
 		CheckResult result = check(session);
-		// 점검 동안 다른 경로(도움 요청 등)가 바꾼 필드를 덮지 않도록 최신 행을 다시 읽는다.
-		StudentSession fresh = sessions.findById(session.getId()).orElse(session);
 		String issuesJson = json.writeValueAsString(sortedIssues(result));
 		String extrasJson = json.writeValueAsString(result.extras());
-		fresh.setContainerRunning(result.containerRunning());
-		fresh.setIdeConnected(result.ideConnected());
-		if (result.ideConnected()) {
-			fresh.setLastSeenAt(Instant.now());
+		EnvStatus status = result.ok() ? EnvStatus.OK : EnvStatus.MISMATCH;
+		// 점검이 소유한 컬럼만 갱신한다. 동시에 바뀐 needsHelp 등을 덮지 않기 위해 엔티티 전체를 save하지 않는다.
+		int updated = result.ideConnected()
+				? sessions.updateCheckStateSeen(session.getId(), result.containerRunning(), true, status, issuesJson,
+						extrasJson, Instant.now())
+				: sessions.updateCheckState(session.getId(), result.containerRunning(), false, status, issuesJson,
+						extrasJson);
+		if (updated == 0) {
+			// 세션이 사라졌다. 이력 행을 만들면 FK가 깨진다.
+			return result;
 		}
-		fresh.setEnvStatus(result.ok() ? EnvStatus.OK : EnvStatus.MISMATCH);
-		fresh.setIssuesJson(issuesJson);
-		fresh.setExtrasJson(extrasJson);
-		StudentSession saved = sessions.save(fresh);
-		boolean changed = checks.findFirstBySessionOrderByIdDesc(saved)
+		boolean changed = checks.findFirstBySessionOrderByIdDesc(session)
 				.map(prev -> prev.isOk() != result.ok() || !prev.getIssuesJson().equals(issuesJson)
 						|| !prev.getExtrasJson().equals(extrasJson))
 				.orElse(true);
 		if (changed) {
-			checks.save(new EnvironmentCheck(saved, result.ok(), issuesJson, extrasJson));
+			checks.save(new EnvironmentCheck(session, result.ok(), issuesJson, extrasJson));
 		}
 		return result;
 	}

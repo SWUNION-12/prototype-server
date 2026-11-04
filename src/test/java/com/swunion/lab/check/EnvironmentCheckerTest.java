@@ -98,14 +98,59 @@ class EnvironmentCheckerTest {
 		assertThat(checks.findBySessionOrderByIdAsc(s)).hasSize(2);
 	}
 
+	@Test
+	void oneSessionExecFailureDoesNotAffectNextSession() {
+		var bad = session("b1", "bad");
+		var good = session("b2", "good");
+		docker.throwOnExecFor = "bad";
+		var r1 = checker.checkAndRecord(bad);
+		var r2 = checker.checkAndRecord(good);
+		assertThat(r1.ok()).isFalse();
+		assertThat(r2.ok()).isTrue();
+		assertThat(sessions.findById(good.getId()).orElseThrow().getEnvStatus()).isEqualTo(EnvStatus.OK);
+	}
+
+	@Test
+	void concurrentNeedsHelpChangeSurvivesRecord() {
+		var s = session("t4", "c4");
+		// 점검 도중(exec 시점)에 다른 요청이 needsHelp를 바꾼 상황
+		docker.onExec = () -> {
+			var other = sessions.findById(s.getId()).orElseThrow();
+			other.setNeedsHelp(true);
+			other.setNeedsHelpReason("학생 호출");
+			sessions.saveAndFlush(other);
+		};
+		checker.checkAndRecord(s);
+		var fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(fresh.isNeedsHelp()).isTrue();
+		assertThat(fresh.getNeedsHelpReason()).isEqualTo("학생 호출");
+		assertThat(fresh.getEnvStatus()).isEqualTo(EnvStatus.OK);
+	}
+
+	@Test
+	void deletedSessionInsertsNoHistoryRow() {
+		var s = session("t5", "c5");
+		Long id = s.getId();
+		sessions.delete(s);
+		sessions.flush();
+		checker.checkAndRecord(s);
+		assertThat(checks.count()).isZero();
+		assertThat(sessions.findById(id)).isEmpty();
+	}
+
 	static class FakeDocker implements DockerGateway {
 		boolean running = true;
 		boolean throwOnExec;
+		String throwOnExecFor;
+		Runnable onExec;
 		int connections;
 		String packages = "[{\"name\":\"six\",\"version\":\"1.16.0\"},{\"name\":\"pip\",\"version\":\"24\"}]";
 
 		public ExecResult exec(String id, List<String> cmd, Duration t) {
-			if (throwOnExec) {
+			if (onExec != null) {
+				onExec.run();
+			}
+			if (throwOnExec || id.equals(throwOnExecFor)) {
 				throw new DockerOperationException("boom");
 			}
 			String c = String.join(" ", cmd);

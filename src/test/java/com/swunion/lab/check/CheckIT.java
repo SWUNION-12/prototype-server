@@ -116,7 +116,7 @@ class CheckIT {
 			assertThat(cleared).as("연결 종료 후 ideConnected").isTrue();
 
 			// 패키지 제거 -> MISSING six
-			exec(id, List.of("uv", "pip", "uninstall", "--python", "/opt/venv/bin/python", "six"), null);
+			exec(id, List.of("uv", "pip", "uninstall", "--python", "/opt/venv/bin/python", "six"));
 			CheckResult missing = checker.checkAndRecord(s);
 			assertThat(missing.issues()).containsExactly(new Issue(IssueType.MISSING, "six", "1.16.0", null));
 			assertThat(missing.signature()).isEqualTo("MISSING:six");
@@ -152,7 +152,7 @@ class CheckIT {
 		}
 	}
 
-	private void exec(String id, List<String> cmd, String dir) {
+	private void exec(String id, List<String> cmd) {
 		ExecResult r = docker.exec(id, cmd, Duration.ofSeconds(60));
 		assertThat(r.exitCode()).as(r.stderr()).isZero();
 	}
