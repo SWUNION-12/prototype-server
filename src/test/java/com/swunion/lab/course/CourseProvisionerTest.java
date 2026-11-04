@@ -39,7 +39,7 @@ class CourseProvisionerTest {
 	@BeforeEach
 	void setUp() {
 		var props = new LabProperties("i", "p", "m", 15, "http://x", "127.0.0.1", dataDir, "swunion/lab-base:1",
-				"swunion-test/course-");
+				"swunion-test/course-", "swunion-test-s");
 		provisioner = new CourseProvisioner(repo, docker, locker, props, json);
 		when(docker.imageExists("swunion/lab-base:1")).thenReturn(true);
 	}

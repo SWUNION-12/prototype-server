@@ -19,3 +19,4 @@ lab:
   data-dir: ./data
   base-image: swunion/lab-base:1
   course-image-prefix: swunion/course-
+  container-name-prefix: swunion-s
