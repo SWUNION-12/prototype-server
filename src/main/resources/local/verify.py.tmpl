@@ -1,0 +1,92 @@
+# 수업 환경 검증. 직접 지정한 패키지마다 설치 버전을 lock 기준과 비교하고 실제로 import 해 봅니다.
+# 파이썬 3.8 이상에서 동작합니다.
+import json
+import re
+import sys
+
+try:
+    import importlib.metadata as md
+except ImportError:  # 3.8 미만은 지원하지 않는다.
+    md = None
+
+EXPECTED = json.loads(r'''{{EXPECTED_JSON}}''')
+
+
+def norm(name):
+    # PEP 503 이름 정규화
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def emit(ok, python=None, passed=None, total=None, failed=()):
+    print("---SWUNION-VERIFY-BEGIN---")
+    print("verify=" + ("ok" if ok else "fail"))
+    if python is not None:
+        print("python=" + python)
+    if passed is not None:
+        print("packages=%d/%d" % (passed, total))
+    if failed:
+        print("failed=" + ",".join(failed))
+    print("---SWUNION-VERIFY-END---")
+
+
+def modules_for(dist, name):
+    # 1) packages_distributions (3.10+)  2) top_level.txt  3) 이름의 -를 _로
+    mods = []
+    pd = getattr(md, "packages_distributions", None)
+    if pd is not None:
+        try:
+            for mod, dists in pd().items():
+                if name in [norm(d) for d in dists]:
+                    mods.append(mod)
+        except Exception:
+            mods = []
+    if not mods:
+        try:
+            text = dist.read_text("top_level.txt")
+        except Exception:
+            text = None
+        if text:
+            mods = [m.strip() for m in text.splitlines() if m.strip()]
+    if not mods:
+        mods = [name.replace("-", "_")]
+    return mods
+
+
+def main():
+    py = "%d.%d.%d" % tuple(sys.version_info[:3])
+    if md is None:
+        emit(False, failed=["python:Unsupported"])
+        return
+    installed = {}
+    for d in md.distributions():
+        try:
+            installed[norm(d.metadata["Name"])] = d
+        except Exception:
+            continue
+    failed = []
+    passed = 0
+    for name, want in EXPECTED.items():
+        key = norm(name)
+        dist = installed.get(key)
+        if dist is None:
+            failed.append(name + ":NotInstalled")
+            continue
+        if want is not None and dist.version != want:
+            failed.append(name + ":VersionMismatch")
+            continue
+        imported = False
+        for mod in modules_for(dist, key):
+            try:
+                __import__(mod)
+                imported = True
+                break
+            except Exception:
+                continue
+        if not imported:
+            failed.append(name + ":ImportError")
+            continue
+        passed += 1
+    emit(not failed, py, passed, len(EXPECTED), failed)
+
+
+main()

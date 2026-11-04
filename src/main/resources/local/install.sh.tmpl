@@ -1,0 +1,45 @@
+#!/bin/sh
+# 수업 {{COURSE_ID}} 로컬 설치 스크립트. 실행 전에 이 주소에서 내용을 볼 수 있습니다.
+# 설치 폴더는 SWUNION_DIR 환경변수로 바꿀 수 있습니다.
+PUBLIC_BASE_URL="{{BASE_URL}}"
+TOKEN="{{TOKEN}}"
+COURSE_ID="{{COURSE_ID}}"
+SWUNION_DIR="${SWUNION_DIR:-$HOME/swunion-course-$COURSE_ID}"
+
+fail_block() {
+  # $1: 실패 단계의 Reason (영문자만)
+  printf '%s\n' '---SWUNION-VERIFY-BEGIN---' 'verify=fail' "failed=install:$1" '---SWUNION-VERIFY-END---'
+}
+
+echo "[1/4] uv 확인"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv가 없어 설치합니다."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  PATH="$HOME/.local/bin:$PATH"
+  export PATH
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "uv 설치에 실패했습니다."
+    fail_block UvInstallFailed
+    exit 1
+  fi
+fi
+
+echo "[2/4] 수업 파일 내려받기: $SWUNION_DIR"
+mkdir -p "$SWUNION_DIR" && cd "$SWUNION_DIR" || { fail_block DownloadFailed; exit 1; }
+for f in pyproject.toml uv.lock .python-version verify.py; do
+  if ! curl -fsSL "$PUBLIC_BASE_URL/l/$TOKEN/files/$f" -o "$f"; then
+    echo "$f 를 내려받지 못했습니다."
+    fail_block DownloadFailed
+    exit 1
+  fi
+done
+
+echo "[3/4] 패키지 설치 (uv sync --frozen)"
+if ! uv sync --frozen </dev/null; then
+  echo "패키지 설치에 실패했습니다."
+  fail_block UvSyncFailed
+  exit 1
+fi
+
+echo "[4/4] 설치 검증"
+uv run --frozen python verify.py </dev/null
