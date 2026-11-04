@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: lab
+  config:
+    import: "optional:file:.env[.properties]"
+  datasource:
+    url: jdbc:h2:file:./data/db
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+lab:
+  instructor-username: ${INSTRUCTOR_USERNAME:instructor}
+  instructor-password: ${INSTRUCTOR_PASSWORD:instructor}
+  llm-model: ${LLM_MODEL:claude-haiku-5-5}
+  check-interval-seconds: ${CHECK_INTERVAL_SECONDS:15}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  ide-bind-address: ${IDE_BIND_ADDRESS:127.0.0.1}
+  data-dir: ./data
+  base-image: swunion/lab-base:1

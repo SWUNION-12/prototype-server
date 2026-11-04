@@ -1,0 +1,70 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.swunion'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+// 이 머신에는 JDK 26만 있으므로 툴체인 대신 release 21로 바이트코드 수준을 고정한다.
+tasks.withType(JavaCompile).configureEach {
+	options.release = 21
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-h2console'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'com.github.docker-java:docker-java-core:3.5.1'
+	implementation 'com.github.docker-java:docker-java-transport-httpclient5:3.5.1'
+	implementation 'org.apache.commons:commons-compress:1.28.0'
+	runtimeOnly 'com.h2database:h2'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// 태그 없음 = 단위 테스트. Docker/네트워크/API 키가 필요한 테스트는 별도 태스크로 분리한다.
+tasks.named('test') {
+	useJUnitPlatform {
+		excludeTags 'integration', 'llm'
+	}
+}
+
+// llm+integration 이중 태그 테스트가 두 태스크에서 중복 실행되지 않도록 llm은 llmTest에서만 돈다.
+tasks.register('integrationTest', Test) {
+	description = 'Docker, uv, 네트워크가 필요한 integration 태그 테스트'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'integration'
+		excludeTags 'llm'
+	}
+	shouldRunAfter tasks.named('test')
+}
+
+tasks.register('llmTest', Test) {
+	description = '실제 API 키가 필요한 llm 태그 테스트'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'llm'
+	}
+	shouldRunAfter tasks.named('test')
+}
