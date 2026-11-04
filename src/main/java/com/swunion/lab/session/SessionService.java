@@ -113,30 +113,36 @@ public class SessionService {
 		return sessions.findByToken(token == null ? "" : token).orElseThrow(SessionNotFoundException::new);
 	}
 
+	// 아래 쓰기는 전부 자기 컬럼만 갱신한다. 점검·에이전트·학생 요청이 동시에 같은 세션을 쓰므로
+	// 엔티티 전체를 save하면 다른 쪽이 바꾼 값을 덮어쓴다.
+
 	public void flagNeedsHelp(long sessionId, String reason) {
-		sessions.findById(sessionId).ifPresent(s -> {
-			s.setNeedsHelp(true);
-			s.setNeedsHelpReason(reason);
-			sessions.save(s);
-		});
+		sessions.updateNeedsHelp(sessionId, true, reason);
+	}
+
+	/** 에이전트가 강사에게 넘길 때. signature가 같은 불일치는 점검이 다시 에이전트로 보내지 않는다. */
+	public void flagNeedsHelp(long sessionId, String reason, String signature) {
+		sessions.updateEscalation(sessionId, reason, signature);
 	}
 
 	public void clearNeedsHelp(long sessionId) {
-		sessions.findById(sessionId).ifPresent(s -> {
-			s.setNeedsHelp(false);
-			s.setNeedsHelpReason(null);
-			sessions.save(s);
-		});
+		sessions.updateNeedsHelp(sessionId, false, null);
 	}
 
-	/** 멈춘 컨테이너도 되살린다. 재시작하면 호스트 포트가 바뀔 수 있어 다시 읽어 저장한다. */
+	public void markRepairing(long sessionId) {
+		sessions.updateEnvStatus(sessionId, EnvStatus.REPAIRING);
+	}
+
+	/**
+	 * 멈춘 컨테이너도 되살린다. 재시작하면 호스트 포트가 바뀔 수 있어 다시 읽어 저장한다.
+	 * 재시작을 기다리는 동안 학생 호출 등이 세션을 바꿀 수 있으므로 포트와 실행 여부만 갱신한다.
+	 */
 	public boolean restartContainer(long sessionId) {
 		StudentSession s = sessions.findById(sessionId).orElseThrow(SessionNotFoundException::new);
 		docker.restart(s.getContainerId());
-		s.setHostPort(docker.hostPort(s.getContainerId(), IDE_PORT));
-		s.setContainerRunning(true);
-		s = sessions.save(s);
-		return health.awaitHealthy(s.getHostPort(), HEALTH_TIMEOUT);
+		int port = docker.hostPort(s.getContainerId(), IDE_PORT);
+		sessions.updateContainerState(sessionId, port, true);
+		return health.awaitHealthy(port, HEALTH_TIMEOUT);
 	}
 
 	public String ideUrl(StudentSession s) {

@@ -193,6 +193,41 @@ class SessionServiceTest {
 		assertThat(service.restartContainer(s.getId())).isFalse();
 	}
 
+	@Test
+	void restartDoesNotClobberNeedsHelpSetWhileRestarting() {
+		StudentSession s = service.join("ABC123", "철수");
+		// 재시작을 기다리는 동안 다른 요청(학생 호출)이 needsHelp를 바꾼 상황
+		docker.onRestart = () -> service.flagNeedsHelp(s.getId(), "학생 호출");
+
+		service.restartContainer(s.getId());
+
+		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(fresh.isNeedsHelp()).isTrue();
+		assertThat(fresh.getNeedsHelpReason()).isEqualTo("학생 호출");
+		assertThat(fresh.isContainerRunning()).isTrue();
+	}
+
+	@Test
+	void agentWritesTouchOnlyTheirOwnColumns() {
+		StudentSession s = service.join("ABC123", "철수");
+		service.markRepairing(s.getId());
+		assertThat(sessions.findById(s.getId()).orElseThrow().getEnvStatus()).isEqualTo(EnvStatus.REPAIRING);
+
+		service.flagNeedsHelp(s.getId(), "재점검 실패: MISSING:six", "MISSING:six");
+		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(fresh.isNeedsHelp()).isTrue();
+		assertThat(fresh.getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six");
+		assertThat(fresh.getLastEscalatedSignature()).isEqualTo("MISSING:six");
+		assertThat(fresh.getEnvStatus()).as("다른 컬럼은 그대로").isEqualTo(EnvStatus.REPAIRING);
+		assertThat(fresh.getHostPort()).isEqualTo(s.getHostPort());
+
+		assertThat(sessions.clearLastEscalatedSignature(s.getId())).isEqualTo(1);
+		assertThat(sessions.findById(s.getId()).orElseThrow().getLastEscalatedSignature()).isNull();
+		assertThat(sessions.findById(s.getId()).orElseThrow().isNeedsHelp()).isTrue();
+		// 이미 비어 있으면 갱신할 행이 없다
+		assertThat(sessions.clearLastEscalatedSignature(s.getId())).isZero();
+	}
+
 	static class FakeDocker implements DockerGateway {
 		final List<ContainerSpec> specs = new ArrayList<>();
 		final Map<String, Integer> ports = new HashMap<>();
@@ -219,7 +254,12 @@ class SessionServiceTest {
 			}
 			return ports.get(id);
 		}
-		public void restart(String id) { restarted.add(id); }
+		Runnable onRestart = () -> { };
+
+		public void restart(String id) {
+			restarted.add(id);
+			onRestart.run();
+		}
 		public boolean isRunning(String id) { return true; }
 		public void remove(String id) { removed.add(id); }
 		public boolean imageExists(String image) { return true; }

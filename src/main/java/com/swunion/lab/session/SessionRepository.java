@@ -35,4 +35,34 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	int updateCheckStateSeen(@Param("id") long id, @Param("running") boolean running, @Param("ide") boolean ide,
 			@Param("status") EnvStatus status, @Param("issues") String issues, @Param("extras") String extras,
 			@Param("seen") Instant seen);
+
+	/** 에이전트 실행 시작 표시. 실행 끝의 재점검(updateCheckState*)이 다시 OK/MISMATCH로 바꾼다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.envStatus = :status where s.id = :id")
+	int updateEnvStatus(@Param("id") long id, @Param("status") EnvStatus status);
+
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.needsHelp = :needsHelp, s.needsHelpReason = :reason where s.id = :id")
+	int updateNeedsHelp(@Param("id") long id, @Param("needsHelp") boolean needsHelp, @Param("reason") String reason);
+
+	/** 에이전트가 강사에게 넘길 때. 같은 불일치로 다시 호출하지 않도록 서명을 같이 남긴다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.needsHelp = true, s.needsHelpReason = :reason,"
+			+ " s.lastEscalatedSignature = :signature where s.id = :id")
+	int updateEscalation(@Param("id") long id, @Param("reason") String reason, @Param("signature") String signature);
+
+	/** 점검이 OK일 때 매번 부른다. 이미 비어 있으면 0행이라 쓰기가 일어나지 않는다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.lastEscalatedSignature = null"
+			+ " where s.id = :id and s.lastEscalatedSignature is not null")
+	int clearLastEscalatedSignature(@Param("id") long id);
+
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.hostPort = :port, s.containerRunning = :running where s.id = :id")
+	int updateContainerState(@Param("id") long id, @Param("port") int port, @Param("running") boolean running);
 }

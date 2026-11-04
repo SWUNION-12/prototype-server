@@ -1,5 +1,6 @@
 package com.swunion.lab.check;
 
+import com.swunion.lab.agent.AgentTrigger;
 import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.session.SessionRepository;
 import com.swunion.lab.session.StudentSession;
@@ -21,15 +22,21 @@ public class CheckScheduler {
 
 	private final SessionRepository sessions;
 	private final EnvironmentChecker checker;
+	private final AgentTrigger agent;
 
-	public CheckScheduler(SessionRepository sessions, EnvironmentChecker checker) {
+	public CheckScheduler(SessionRepository sessions, EnvironmentChecker checker, AgentTrigger agent) {
 		this.sessions = sessions;
 		this.checker = checker;
+		this.agent = agent;
 	}
 
 	@Scheduled(fixedDelayString = "${lab.check-interval-seconds}", timeUnit = TimeUnit.SECONDS)
 	public void runOnce() {
 		for (StudentSession s : sessions.findByCourse_StatusAndContainerIdIsNotNull(CourseStatus.READY)) {
+			if (agent.isRunning(s.getId())) {
+				// 실행 중인 세션은 에이전트가 끝에 직접 재점검한다. 여기서 기록하면 REPAIRING을 덮는다.
+				continue;
+			}
 			try {
 				CheckResult result = checker.checkAndRecord(s);
 				afterCheck(s, result);
@@ -42,9 +49,26 @@ public class CheckScheduler {
 	}
 
 	/**
-	 * 훅 지점. 에이전트 태스크가 여기서 "불일치면 에이전트 호출"과
-	 * "이미 실행 중인 세션은 건너뛰기"를 처리한다. 지금은 기록만 한다.
+	 * 불일치면 에이전트를 부른다. 같은 불일치로 이미 강사에게 넘긴 세션은 다시 부르지 않는다
+	 * (LLM 비용과 무한 반복 방지). 점검이 OK가 되면 그 기록을 지워 다음 불일치는 다시 부르게 한다.
 	 */
 	protected void afterCheck(StudentSession session, CheckResult result) {
+		long id = session.getId();
+		if (result.ok()) {
+			sessions.clearLastEscalatedSignature(id);
+			return;
+		}
+		if (agent.isRunning(id)) {
+			return;
+		}
+		// 틱 시작에 읽은 엔티티는 그 사이 끝난 실행이 저장한 서명을 모를 수 있어 다시 읽는다.
+		StudentSession latest = sessions.findById(id).orElse(null);
+		if (latest == null) {
+			return;
+		}
+		if (AgentTrigger.signatureKey(result.signature()).equals(latest.getLastEscalatedSignature())) {
+			return;
+		}
+		agent.onCheckMismatch(latest, result);
 	}
 }
