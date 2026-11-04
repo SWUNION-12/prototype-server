@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수업 관리 (강사)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; max-width: 1100px; margin: 1em auto; padding: 0 1em; line-height: 1.45; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.1em; margin-top: 1.6em; }
+  label { display: block; margin: 0.6em 0 0.2em; font-weight: bold; }
+  input[type=text], textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 4px; }
+  textarea { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #bbb; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .wrap { white-space: pre-wrap; word-break: break-word; }
+  .err { color: #b00020; }
+  .ok { color: #116611; }
+  .muted { color: #666; }
+  .st-READY { color: #116611; font-weight: bold; }
+  .st-FAILED { color: #b00020; font-weight: bold; }
+  .st-LOCKING, .st-BUILDING { color: #8a5a00; font-weight: bold; }
+  .st-ENDED { color: #666; }
+</style>
+</head>
+<body>
+<h1>수업 관리 (강사)</h1>
+<p class="muted">학생 입장 주소: <span id="joinUrl" class="mono"></span></p>
+
+<h2>새 수업 만들기</h2>
+<form id="createForm">
+  <label for="name">수업명</label>
+  <input type="text" id="name" maxlength="100" required>
+
+  <label for="py">파이썬 버전 (3.12 또는 3.12.4 형식)</label>
+  <input type="text" id="py" value="3.12" required>
+
+  <label for="pk">패키지 (한 줄에 하나: 이름, 이름==버전, 이름&gt;=버전)</label>
+  <textarea id="pk" rows="5" placeholder="numpy==2.1.0&#10;pandas"></textarea>
+
+  <p>
+    <button type="submit" id="createBtn">수업 만들기</button>
+    <span id="createMsg" role="status"></span>
+  </p>
+</form>
+
+<h2>수업 목록 <button type="button" id="reloadBtn">새로고침</button></h2>
+<p id="listMsg" role="status" class="muted"></p>
+<table id="courses">
+  <thead>
+    <tr><th>번호</th><th>수업명</th><th>파이썬</th><th>패키지</th><th>상태</th><th>입장 코드</th><th>오류 요약</th><th>대시보드</th></tr>
+  </thead>
+  <tbody id="courseRows"></tbody>
+</table>
+
+<script>
+'use strict';
+
+// 서버나 모델에서 온 글자는 전부 createTextNode/textContent로만 넣는다. HTML 문자열 삽입 방식은 쓰지 않는다.
+function h(tag, props) {
+  const e = document.createElement(tag);
+  if (props) {
+    for (const k of Object.keys(props)) {
+      if (k === 'class') e.className = props[k];
+      else e.setAttribute(k, props[k]);
+    }
+  }
+  for (let i = 2; i < arguments.length; i++) {
+    const c = arguments[i];
+    if (c == null) continue;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+async function api(method, url, body) {
+  const opt = { method: method, headers: {} };
+  if (body !== undefined) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opt);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  return { ok: res.ok, status: res.status, data: data };
+}
+
+function errorText(r) {
+  if (r.data && typeof r.data.error === 'string' && r.data.error) return r.data.error;
+  if (r.status === 401) return '강사 인증이 필요합니다. 페이지를 새로고침해 로그인해 주세요.';
+  return '요청에 실패했습니다 (HTTP ' + r.status + ').';
+}
+
+const STATUS_LABEL = {
+  LOCKING: 'LOCKING (패키지 확정 중)',
+  BUILDING: 'BUILDING (이미지 빌드 중)',
+  READY: 'READY (준비됨)',
+  FAILED: 'FAILED (실패)',
+  ENDED: 'ENDED (종료됨)'
+};
+
+const POLL_MS = 3000;
+const MAX_POLL_MS = 30000;
+let pending = false;
+let rerun = false;
+let timer = null;
+let fails = 0;
+let lastSig = null;
+let anyActive = false;
+
+document.getElementById('joinUrl').textContent = location.origin + '/join.html';
+
+function renderCourses(list) {
+  const body = document.getElementById('courseRows');
+  const rows = [];
+  for (const c of list) {
+    const link = h('a', { href: 'dashboard.html?course=' + encodeURIComponent(String(c.id)) }, '대시보드 열기');
+    rows.push(h('tr', null,
+      h('td', null, String(c.id)),
+      h('td', null, c.name == null ? '' : String(c.name)),
+      h('td', { class: 'mono' }, c.pythonVersion == null ? '' : String(c.pythonVersion)),
+      h('td', { class: 'mono wrap' }, Array.isArray(c.packages) ? c.packages.join('\n') : ''),
+      h('td', { class: 'st-' + String(c.status).replace(/[^A-Z]/g, '') }, STATUS_LABEL[c.status] || String(c.status)),
+      h('td', { class: 'mono' }, c.entryCode == null ? '' : String(c.entryCode)),
+      h('td', { class: 'wrap' }, c.errorSummary == null ? '' : String(c.errorSummary)),
+      h('td', null, link)));
+  }
+  if (rows.length === 0) {
+    rows.push(h('tr', null, h('td', { colspan: '8', class: 'muted' }, '아직 수업이 없습니다.')));
+  }
+  body.replaceChildren(...rows);
+}
+
+function schedule() {
+  clearTimeout(timer);
+  timer = null;
+  if (!anyActive && fails === 0) return;
+  // 발급 중인 수업이 있으면 3초마다. 오류가 이어지면 간격을 늘린다.
+  const delay = fails === 0 ? POLL_MS : Math.min(POLL_MS * Math.pow(2, fails), MAX_POLL_MS);
+  timer = setTimeout(refresh, delay);
+}
+
+async function refresh() {
+  clearTimeout(timer);
+  // 앞선 요청이 끝나지 않았으면 겹쳐 보내지 않고 끝난 뒤 한 번 더 부른다.
+  if (pending) { rerun = true; return; }
+  pending = true;
+  const msg = document.getElementById('listMsg');
+  try {
+    const r = await api('GET', '/api/courses');
+    if (r.ok && Array.isArray(r.data)) {
+      fails = 0;
+      msg.textContent = '';
+      msg.className = 'muted';
+      anyActive = r.data.some(function (c) { return c.status === 'LOCKING' || c.status === 'BUILDING'; });
+      const sig = JSON.stringify(r.data);
+      if (sig !== lastSig) {
+        lastSig = sig;
+        renderCourses(r.data);
+      }
+      if (anyActive) {
+        msg.textContent = '발급 중인 수업이 있어 3초마다 갱신합니다.';
+      }
+    } else {
+      fails++;
+      msg.textContent = '목록을 불러오지 못했습니다: ' + errorText(r);
+      msg.className = 'err';
+    }
+  } catch (e) {
+    fails++;
+    msg.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도합니다.';
+    msg.className = 'err';
+  } finally {
+    pending = false;
+    if (rerun) { rerun = false; refresh(); } else { schedule(); }
+  }
+}
+
+document.getElementById('reloadBtn').addEventListener('click', function () {
+  fails = 0;
+  refresh();
+});
+
+document.getElementById('createForm').addEventListener('submit', async function (ev) {
+  ev.preventDefault();
+  const btn = document.getElementById('createBtn');
+  const msg = document.getElementById('createMsg');
+  btn.disabled = true;
+  msg.textContent = '만드는 중...';
+  msg.className = 'muted';
+  try {
+    const r = await api('POST', '/api/courses', {
+      name: document.getElementById('name').value,
+      pythonVersion: document.getElementById('py').value,
+      packages: document.getElementById('pk').value
+    });
+    if (r.ok && r.data) {
+      msg.textContent = '수업을 만들었습니다 (번호 ' + String(r.data.id) + '). 패키지 확정과 이미지 빌드가 진행됩니다.';
+      msg.className = 'ok';
+      document.getElementById('name').value = '';
+      document.getElementById('pk').value = '';
+      fails = 0;
+      lastSig = null;
+      refresh();
+    } else {
+      msg.textContent = errorText(r);
+      msg.className = 'err';
+    }
+  } catch (e) {
+    msg.textContent = '서버에 연결하지 못했습니다.';
+    msg.className = 'err';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>

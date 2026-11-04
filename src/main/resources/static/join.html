@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수업 입장</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; max-width: 480px; margin: 2em auto; padding: 0 1em; line-height: 1.45; }
+  h1 { font-size: 1.4em; }
+  label { display: block; margin: 0.8em 0 0.2em; font-weight: bold; }
+  input[type=text] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
+  button { font: inherit; padding: 6px 16px; cursor: pointer; margin-top: 1em; }
+  .err { color: #b00020; white-space: pre-wrap; }
+  .muted { color: #666; }
+</style>
+</head>
+<body>
+<h1>수업 입장</h1>
+<p class="muted">강사에게 받은 입장 코드와 이름을 입력하세요.</p>
+<form id="joinForm">
+  <label for="code">입장 코드</label>
+  <input type="text" id="code" autocomplete="off" autocapitalize="characters" required>
+
+  <label for="name">이름</label>
+  <input type="text" id="name" autocomplete="off" maxlength="40" required>
+
+  <button type="submit" id="joinBtn">입장</button>
+</form>
+<p id="msg" role="status"></p>
+
+<script>
+'use strict';
+
+async function api(method, url, body) {
+  const opt = { method: method, headers: {} };
+  if (body !== undefined) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opt);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  return { ok: res.ok, status: res.status, data: data };
+}
+
+document.getElementById('joinForm').addEventListener('submit', async function (ev) {
+  ev.preventDefault();
+  const btn = document.getElementById('joinBtn');
+  const msg = document.getElementById('msg');
+  btn.disabled = true;
+  // 컨테이너를 만들고 IDE가 응답할 때까지 기다리므로 시간이 걸린다.
+  msg.textContent = '입장하는 중입니다. 클라우드 환경을 만드는 데 시간이 걸릴 수 있습니다...';
+  msg.className = 'muted';
+  try {
+    const r = await api('POST', '/api/join', {
+      entryCode: document.getElementById('code').value.trim(),
+      name: document.getElementById('name').value.trim()
+    });
+    if (r.ok && r.data && typeof r.data.token === 'string' && r.data.token) {
+      location.href = 'student.html?t=' + encodeURIComponent(r.data.token);
+      return;
+    }
+    msg.textContent = (r.data && typeof r.data.error === 'string' && r.data.error)
+      ? r.data.error
+      : '입장하지 못했습니다 (HTTP ' + r.status + ').';
+    msg.className = 'err';
+  } catch (e) {
+    msg.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+    msg.className = 'err';
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

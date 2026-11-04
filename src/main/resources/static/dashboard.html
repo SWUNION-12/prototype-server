@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수업 대시보드 (강사)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; max-width: 1300px; margin: 1em auto; padding: 0 1em; line-height: 1.45; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.1em; margin-top: 1.6em; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #bbb; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+  dt { font-weight: bold; }
+  dd { margin: 0; }
+  ul { margin: 0; padding-left: 1.2em; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .wrap { white-space: pre-wrap; word-break: break-word; }
+  .err { color: #b00020; }
+  .ok { color: #116611; }
+  .warn { color: #8a5a00; }
+  .muted { color: #666; }
+  tr.help td { background: #fff1b8; }
+  tr.help td:first-child { border-left: 6px solid #d9480f; }
+  .st-READY { color: #116611; font-weight: bold; }
+  .st-FAILED { color: #b00020; font-weight: bold; }
+  .st-LOCKING, .st-BUILDING { color: #8a5a00; font-weight: bold; }
+  .small { font-size: 0.85em; }
+</style>
+</head>
+<body>
+<p><a href="instructor.html">&larr; 수업 목록</a></p>
+<h1 id="title">수업 대시보드</h1>
+<p id="statusLine" role="status" class="muted"></p>
+
+<h2>수업 정보</h2>
+<dl id="courseInfo"></dl>
+<p id="courseError" class="err wrap"></p>
+
+<h2>수업 종료</h2>
+<p>
+  <button type="button" id="endBtn" disabled>수업 종료</button>
+  <span id="endMsg" role="status"></span>
+</p>
+<p class="muted small">컨테이너만 멈추고 학생 볼륨(코드)은 남습니다. 한 번 누르면 확인 상태가 되고, 5초 안에 한 번 더 누르면 종료합니다.</p>
+
+<h2>학생 <span id="studentCount" class="muted small"></span></h2>
+<table id="students">
+  <thead>
+    <tr>
+      <th>이름</th>
+      <th>접속 (컨테이너 / IDE)</th>
+      <th>환경</th>
+      <th>로컬 설치</th>
+      <th>에이전트 조치 (최근 5건)</th>
+      <th>강사 도움 필요</th>
+    </tr>
+  </thead>
+  <tbody id="studentRows"></tbody>
+</table>
+
+<h2>반복 오류</h2>
+<p id="errorsNote" class="muted"></p>
+<table id="errors">
+  <thead><tr><th>오류 유형</th><th>건수</th><th>학생</th></tr></thead>
+  <tbody id="errorRows"></tbody>
+</table>
+
+<script>
+'use strict';
+
+// 서버, 학생 환경, 모델에서 온 글자는 전부 텍스트 노드로만 넣는다. HTML 문자열 삽입 방식은 쓰지 않는다.
+function h(tag, props) {
+  const e = document.createElement(tag);
+  if (props) {
+    for (const k of Object.keys(props)) {
+      if (k === 'class') e.className = props[k];
+      else e.setAttribute(k, props[k]);
+    }
+  }
+  for (let i = 2; i < arguments.length; i++) {
+    const c = arguments[i];
+    if (c == null) continue;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+async function api(method, url, body) {
+  const opt = { method: method, headers: {} };
+  if (body !== undefined) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opt);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  return { ok: res.ok, status: res.status, data: data };
+}
+
+function errorText(r) {
+  if (r.data && typeof r.data.error === 'string' && r.data.error) return r.data.error;
+  if (r.status === 401) return '강사 인증이 필요합니다. 페이지를 새로고침해 로그인해 주세요.';
+  if (r.status === 404) return '찾을 수 없습니다.';
+  return '요청에 실패했습니다 (HTTP ' + r.status + ').';
+}
+
+function str(v) { return v == null ? '' : String(v); }
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('ko-KR');
+}
+
+const ENV_LABEL = { OK: '정상', MISMATCH: '불일치', REPAIRING: '복구 중', UNKNOWN: '확인 전' };
+const LOCAL_LABEL = { NONE: '보고 없음', DIAGNOSED: '진단됨', OK: '성공', FAIL: '실패' };
+const TRIGGER_LABEL = { CHECK: '점검', HELP: '도움 요청' };
+const OUTCOME_LABEL = { RESOLVED: '해결', EXPLAINED: '설명', ESCALATED: '강사 전달', NO_ACTION: '조치 없음' };
+
+function label(map, v) { return Object.prototype.hasOwnProperty.call(map, v) ? map[v] : str(v); }
+
+// ---- 수업 번호 ----
+
+const params = new URLSearchParams(location.search);
+const courseParam = params.get('course');
+const courseId = /^[0-9]{1,18}$/.test(courseParam || '') ? courseParam : null;
+const BASE = courseId === null ? null : '/api/courses/' + encodeURIComponent(courseId);
+
+const statusLine = document.getElementById('statusLine');
+
+// ---- 수업 정보 ----
+
+function renderCourse(c) {
+  document.title = str(c.name) + ' - 대시보드';
+  document.getElementById('title').textContent = '수업 대시보드: ' + str(c.name);
+  const packages = Array.isArray(c.packages) ? c.packages.join(', ') : '';
+  const pairs = [
+    ['수업명', h('span', null, str(c.name))],
+    ['파이썬', h('span', { class: 'mono' }, str(c.pythonVersion))],
+    ['패키지', h('span', { class: 'mono wrap' }, packages)],
+    ['상태', h('span', { class: 'st-' + str(c.status).replace(/[^A-Z]/g, '') }, str(c.status))],
+    ['입장 코드', h('strong', { class: 'mono', id: 'entryCode' }, str(c.entryCode))],
+    ['학생 입장 주소', h('span', { class: 'mono' }, location.origin + '/join.html')]
+  ];
+  const nodes = [];
+  for (const p of pairs) {
+    nodes.push(h('dt', null, p[0]));
+    nodes.push(h('dd', null, p[1]));
+  }
+  document.getElementById('courseInfo').replaceChildren(...nodes);
+  document.getElementById('courseError').textContent = c.errorSummary ? '오류 요약: ' + c.errorSummary : '';
+  updateEndButton(c.status);
+}
+
+// ---- 학생 표 ----
+
+const resolving = new Set();
+
+function cell(cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  for (let i = 1; i < arguments.length; i++) {
+    const c = arguments[i];
+    if (c == null) continue;
+    td.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return td;
+}
+
+function list(items, cls) {
+  const ul = h('ul', cls ? { class: cls } : null);
+  for (const it of items) ul.appendChild(h('li', { class: 'wrap' }, str(it)));
+  return ul;
+}
+
+function connectCell(s) {
+  const td = cell();
+  td.appendChild(h('div', null, '컨테이너: ' + (s.containerRunning ? '실행 중' : '중지')));
+  td.appendChild(h('div', null, 'IDE: ' + (s.ideConnected ? '접속' : '끊김')));
+  const seen = fmtTime(s.lastSeenAt);
+  if (seen) td.appendChild(h('div', { class: 'muted small' }, '마지막 확인 ' + seen));
+  if (s.startupMillis != null) td.appendChild(h('div', { class: 'muted small' }, '기동 ' + str(s.startupMillis) + 'ms'));
+  return td;
+}
+
+function envCell(s) {
+  const td = cell();
+  const cls = s.envStatus === 'OK' ? 'ok' : (s.envStatus === 'MISMATCH' ? 'err' : 'warn');
+  td.appendChild(h('div', { class: cls }, label(ENV_LABEL, s.envStatus) + (s.envStatus ? ' (' + str(s.envStatus) + ')' : '')));
+  if (Array.isArray(s.issues) && s.issues.length > 0) td.appendChild(list(s.issues, 'err'));
+  if (Array.isArray(s.extras) && s.extras.length > 0) {
+    td.appendChild(h('div', { class: 'warn' }, '추가 패키지 경고: ' + s.extras.join(', ')));
+  }
+  return td;
+}
+
+function localCell(s) {
+  const td = cell();
+  const l = s.local || { status: 'NONE' };
+  const cls = l.status === 'OK' ? 'ok' : (l.status === 'FAIL' ? 'err' : 'muted');
+  td.appendChild(h('div', { class: cls }, label(LOCAL_LABEL, l.status)));
+  const detail = [l.os, l.arch, l.python].filter(function (x) { return x; }).join(' / ');
+  if (detail) td.appendChild(h('div', { class: 'mono small' }, detail));
+  if (Array.isArray(l.failed) && l.failed.length > 0) td.appendChild(list(l.failed, 'err'));
+  return td;
+}
+
+function actionsCell(s) {
+  const td = cell();
+  const actions = Array.isArray(s.recentActions) ? s.recentActions.slice(0, 5) : [];
+  if (actions.length === 0) {
+    td.appendChild(h('span', { class: 'muted' }, '-'));
+    return td;
+  }
+  const ul = h('ul');
+  for (const a of actions) {
+    const head = [fmtTime(a.at), label(TRIGGER_LABEL, a.trigger), str(a.classification), label(OUTCOME_LABEL, a.outcome)]
+      .filter(function (x) { return x; }).join(' · ');
+    const li = h('li', null, h('div', { class: 'small' }, head));
+    if (Array.isArray(a.tools) && a.tools.length > 0) {
+      li.appendChild(h('div', { class: 'mono small' }, '도구: ' + a.tools.join(' → ')));
+    }
+    if (a.summary) li.appendChild(h('div', { class: 'wrap' }, str(a.summary)));
+    ul.appendChild(li);
+  }
+  td.appendChild(ul);
+  return td;
+}
+
+async function resolveHelp(sessionId) {
+  if (resolving.has(sessionId)) return;
+  resolving.add(sessionId);
+  lastSig = null;
+  try {
+    const r = await api('POST', BASE + '/sessions/' + encodeURIComponent(String(sessionId)) + '/resolve');
+    if (!r.ok) {
+      statusLine.textContent = '처리 완료 실패: ' + errorText(r);
+      statusLine.className = 'err';
+    }
+  } catch (e) {
+    statusLine.textContent = '서버에 연결하지 못했습니다.';
+    statusLine.className = 'err';
+  } finally {
+    resolving.delete(sessionId);
+    refresh();
+  }
+}
+
+function helpCell(s) {
+  const td = cell();
+  if (!s.needsHelp) {
+    td.appendChild(h('span', { class: 'muted' }, '-'));
+    return td;
+  }
+  td.appendChild(h('strong', { class: 'err' }, '도움 필요'));
+  if (s.needsHelpReason) td.appendChild(h('div', { class: 'wrap' }, str(s.needsHelpReason)));
+  const btn = h('button', { type: 'button', class: 'resolve-btn' }, '처리 완료');
+  btn.setAttribute('data-session-id', String(s.sessionId));
+  if (resolving.has(s.sessionId)) btn.disabled = true;
+  btn.addEventListener('click', function () { btn.disabled = true; resolveHelp(s.sessionId); });
+  td.appendChild(btn);
+  return td;
+}
+
+function renderStudents(students) {
+  document.getElementById('studentCount').textContent = '(' + students.length + '명)';
+  const rows = [];
+  for (const s of students) {
+    const tr = h('tr', { class: s.needsHelp ? 'help' : '' });
+    tr.setAttribute('data-session-id', String(s.sessionId));
+    tr.appendChild(cell('wrap', h('strong', null, str(s.name))));
+    tr.appendChild(connectCell(s));
+    tr.appendChild(envCell(s));
+    tr.appendChild(localCell(s));
+    tr.appendChild(actionsCell(s));
+    tr.appendChild(helpCell(s));
+    rows.push(tr);
+  }
+  if (rows.length === 0) {
+    rows.push(h('tr', null, h('td', { colspan: '6', class: 'muted' }, '아직 입장한 학생이 없습니다.')));
+  }
+  document.getElementById('studentRows').replaceChildren(...rows);
+}
+
+function renderErrors(errors, note) {
+  document.getElementById('errorsNote').textContent = str(note);
+  const rows = [];
+  for (const e of (errors || [])) {
+    rows.push(h('tr', null,
+      h('td', { class: 'mono wrap' }, str(e.errorType)),
+      h('td', null, str(e.count)),
+      h('td', { class: 'wrap' }, Array.isArray(e.students) ? e.students.join(', ') : '')));
+  }
+  if (rows.length === 0) {
+    rows.push(h('tr', null, h('td', { colspan: '3', class: 'muted' }, '아직 없습니다.')));
+  }
+  document.getElementById('errorRows').replaceChildren(...rows);
+}
+
+// ---- 수업 종료: 한 번 누르면 확인 상태, 5초 안에 다시 누르면 종료 ----
+
+const endBtn = document.getElementById('endBtn');
+const endMsg = document.getElementById('endMsg');
+let armTimer = null;
+let ending = false;
+
+function disarm() {
+  clearTimeout(armTimer);
+  armTimer = null;
+  endBtn.textContent = '수업 종료';
+}
+
+function updateEndButton(status) {
+  // 서버는 READY인 수업만 종료할 수 있다.
+  endBtn.disabled = ending || status !== 'READY';
+  if (status !== 'READY') disarm();
+}
+
+endBtn.addEventListener('click', async function () {
+  if (endBtn.disabled) return;
+  if (armTimer === null) {
+    endBtn.textContent = '정말 종료합니까? 한 번 더 누르세요';
+    endMsg.textContent = '';
+    armTimer = setTimeout(disarm, 5000);
+    return;
+  }
+  disarm();
+  ending = true;
+  endBtn.disabled = true;
+  endMsg.textContent = '종료하는 중...';
+  endMsg.className = 'muted';
+  try {
+    const r = await api('POST', BASE + '/end');
+    if (r.ok && r.data) {
+      endMsg.textContent = '수업을 종료했습니다. 멈춘 컨테이너 ' + str(r.data.stopped) + '개, 멈추지 못한 컨테이너 ' + str(r.data.failed) + '개.';
+      endMsg.className = Number(r.data.failed) > 0 ? 'warn' : 'ok';
+    } else {
+      endMsg.textContent = errorText(r);
+      endMsg.className = 'err';
+    }
+  } catch (e) {
+    endMsg.textContent = '서버에 연결하지 못했습니다.';
+    endMsg.className = 'err';
+  } finally {
+    ending = false;
+    lastSig = null;
+    refresh();
+  }
+});
+
+// ---- 3초 조회 ----
+
+const POLL_MS = 3000;
+const MAX_POLL_MS = 30000;
+let pending = false;
+let rerun = false;
+let timer = null;
+let fails = 0;
+let stopped = false;
+let lastSig = null;
+
+function schedule() {
+  clearTimeout(timer);
+  timer = null;
+  if (stopped) return;
+  const delay = fails === 0 ? POLL_MS : Math.min(POLL_MS * Math.pow(2, fails), MAX_POLL_MS);
+  timer = setTimeout(refresh, delay);
+}
+
+async function refresh() {
+  if (stopped) return;
+  clearTimeout(timer);
+  // 앞선 요청이 끝나지 않았으면 겹쳐 보내지 않고, 끝난 뒤 바로 한 번 더 부른다.
+  if (pending) { rerun = true; return; }
+  pending = true;
+  try {
+    const r = await api('GET', BASE + '/dashboard');
+    if (r.ok && r.data && r.data.course) {
+      fails = 0;
+      statusLine.textContent = '3초마다 갱신 중 · 마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR');
+      statusLine.className = 'muted';
+      const sig = JSON.stringify(r.data);
+      // 표를 다시 그리면 누르던 버튼이 사라질 수 있어, 바뀐 데이터가 있을 때만 그린다.
+      if (sig !== lastSig) {
+        lastSig = sig;
+        renderCourse(r.data.course);
+        renderStudents(Array.isArray(r.data.students) ? r.data.students : []);
+        renderErrors(r.data.repeatedErrors, r.data.repeatedErrorsNote);
+      }
+    } else if (r.status === 404) {
+      stopped = true;
+      statusLine.textContent = '수업을 찾을 수 없습니다. 수업 목록에서 다시 열어 주세요.';
+      statusLine.className = 'err';
+    } else {
+      fails++;
+      statusLine.textContent = '대시보드를 불러오지 못했습니다: ' + errorText(r) + ' (재시도 ' + fails + '회째)';
+      statusLine.className = 'err';
+    }
+  } catch (e) {
+    fails++;
+    statusLine.textContent = '서버에 연결하지 못했습니다. 다시 시도합니다 (' + fails + '회째).';
+    statusLine.className = 'err';
+  } finally {
+    pending = false;
+    if (rerun && !stopped) { rerun = false; refresh(); } else { schedule(); }
+  }
+}
+
+if (BASE === null) {
+  stopped = true;
+  statusLine.textContent = '수업 번호가 없습니다. 수업 목록에서 대시보드 링크로 들어와 주세요.';
+  statusLine.className = 'err';
+} else {
+  refresh();
+}
+</script>
+</body>
+</html>
