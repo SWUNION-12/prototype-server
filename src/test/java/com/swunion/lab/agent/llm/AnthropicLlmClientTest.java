@@ -45,7 +45,9 @@ class AnthropicLlmClientTest {
 	@Test
 	void mapsToolUseResponse() {
 		server.expect(requestTo("https://api.anthropic.com/v1/messages")).andExpect(method(HttpMethod.POST))
-				.andExpect(jsonPath("$.model").value("claude-haiku-5-5")).andExpect(jsonPath("$.max_tokens").value(1024))
+				.andExpect(jsonPath("$.model").value("claude-haiku-5-5")).andExpect(jsonPath("$.max_tokens").value(4096))
+				.andExpect(jsonPath("$.output_config.effort").value("low"))
+				.andExpect(jsonPath("$.thinking").doesNotExist())
 				.andExpect(jsonPath("$.system").value("sys"))
 				.andExpect(jsonPath("$.tools[0].name").value("check_environment"))
 				.andExpect(jsonPath("$.tools[0].input_schema.type").value("object"))
@@ -136,5 +138,41 @@ class AnthropicLlmClientTest {
 		assertThatThrownBy(() -> noKey.send("s", List.of(new UserText("a")), List.of()))
 				.isInstanceOf(LlmException.class).hasMessage("API 키 없음");
 		s.verify();
+	}
+
+	@Test
+	void thinkingBlocksAreSentBackVerbatim() {
+		String first = """
+				{"content":[{"type":"thinking","thinking":"","signature":"sig-abc=="},
+				{"type":"text","text":"복구하겠습니다"},
+				{"type":"tool_use","id":"t1","name":"restore_packages","input":{"n":1,"s":"가"}}],"stop_reason":"tool_use"}
+				""";
+		server.expect(requestTo("https://api.anthropic.com/v1/messages"))
+				.andRespond(withSuccess(first, MediaType.APPLICATION_JSON));
+		server.expect(requestTo("https://api.anthropic.com/v1/messages"))
+				.andExpect(jsonPath("$.messages[1].role").value("assistant"))
+				.andExpect(jsonPath("$.messages[1].content.length()").value(3))
+				.andExpect(jsonPath("$.messages[1].content[0].type").value("thinking"))
+				.andExpect(jsonPath("$.messages[1].content[0].thinking").value(""))
+				.andExpect(jsonPath("$.messages[1].content[0].signature").value("sig-abc=="))
+				.andExpect(jsonPath("$.messages[1].content[1].type").value("text"))
+				.andExpect(jsonPath("$.messages[1].content[1].text").value("복구하겠습니다"))
+				.andExpect(jsonPath("$.messages[1].content[2].type").value("tool_use"))
+				.andExpect(jsonPath("$.messages[1].content[2].id").value("t1"))
+				.andExpect(jsonPath("$.messages[1].content[2].input.n").value(1))
+				.andExpect(jsonPath("$.messages[1].content[2].input.s").value("가"))
+				.andExpect(jsonPath("$.messages[2].content[0].tool_use_id").value("t1"))
+				.andExpect(jsonPath("$.thinking").doesNotExist())
+				.andRespond(withSuccess("{\"content\":[{\"type\":\"text\",\"text\":\"끝\"}],\"stop_reason\":\"end_turn\"}",
+						MediaType.APPLICATION_JSON));
+
+		LlmResponse r = client.send("s", List.of(new UserText("go")), List.of());
+		assertThat(r.text()).isEqualTo("복구하겠습니다");
+		assertThat(r.calls()).extracting(ToolCall::id).containsExactly("t1");
+		assertThat(r.providerContent()).isNotNull();
+
+		client.send("s", List.of(new UserText("go"), new AssistantTurn(r.text(), r.calls(), r.providerContent()),
+				new ToolResults(List.of(new ToolResult("t1", "종료 코드: 0", false)))), List.of());
+		server.verify();
 	}
 }

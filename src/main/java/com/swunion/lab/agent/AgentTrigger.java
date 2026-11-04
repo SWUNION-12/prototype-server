@@ -48,14 +48,41 @@ public class AgentTrigger {
 
 	/** 이미 실행 중이면 조용히 무시한다. 점검은 다음 주기에 다시 본다. */
 	public void onCheckMismatch(StudentSession session, CheckResult result) {
-		submit(session.getId(), () -> runner.run(new AgentContext(session, Trigger.CHECK, result, null, null, null)));
+		submit(session.getId(), () -> runSafely(new AgentContext(session, Trigger.CHECK, result, null, null, null)));
 	}
 
 	/** @return 이미 실행 중이라 받지 않았으면 false (도움 요청은 409로 돌려준다) */
 	public boolean onHelp(StudentSession session, long helpRequestId, String errorType, String errorText) {
 		// 학생이 누른 시점의 환경을 모델에게 보여 주려고 실행 스레드에서 점검부터 한다(기록하지 않음).
-		return submit(session.getId(), () -> runner.run(new AgentContext(session, Trigger.HELP,
-				checker.check(session), errorType, errorText, helpRequestId)));
+		return submit(session.getId(), () -> runSafely(new AgentContext(session, Trigger.HELP, preCheck(session),
+				errorType, errorText, helpRequestId)));
+	}
+
+	/** 점검이 던져도(Docker 데몬 오류 등) 도움 요청은 진행한다. 모델은 lastCheck=null을 보고 필요하면 다시 점검한다. */
+	private CheckResult preCheck(StudentSession session) {
+		try {
+			return checker.check(session);
+		}
+		catch (RuntimeException e) {
+			log.warn("도움 요청 사전 점검 실패 session={}: {}", session.getId(), e.toString());
+			return null;
+		}
+	}
+
+	/** run이 던지면 실패로 기록한다. 그러지 않으면 도움 요청이 PROCESSING에 남는다. */
+	private void runSafely(AgentContext ctx) {
+		try {
+			runner.run(ctx);
+		}
+		catch (RuntimeException e) {
+			log.error("에이전트 실행 실패 session={}", ctx.session().getId(), e);
+			try {
+				runner.reportFailure(ctx, null);
+			}
+			catch (RuntimeException ex) {
+				log.error("에이전트 실패 기록 실패 session={}", ctx.session().getId(), ex);
+			}
+		}
 	}
 
 	public boolean isRunning(long sessionId) {

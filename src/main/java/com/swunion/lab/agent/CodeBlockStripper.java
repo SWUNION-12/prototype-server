@@ -11,8 +11,13 @@ public final class CodeBlockStripper {
 
 	public static final String PLACEHOLDER = "[코드는 표시하지 않습니다]";
 
-	// ``` 또는 ~~~ (3개 이상) 펜스부터 같은 펜스까지. 닫지 않은 펜스는 끝까지 지운다(모델이 잘려도 코드가 새지 않게).
-	private static final Pattern FENCE = Pattern.compile("(?s)(`{3,}|~{3,}).*?(?:\\1|\\z)");
+	// ``` (3개 이상) 펜스부터 같은 펜스까지. 줄 중간에 열어도 지운다(모델이 문장 안에 붙여 쓸 수 있다).
+	// 닫지 않은 펜스는 끝까지 지운다(응답이 잘려도 코드가 새지 않게).
+	private static final Pattern BACKTICK_FENCE = Pattern.compile("(?s)(`{3,}).*?(?:\\1|\\z)");
+	// ~~~ 펜스는 줄 맨 앞(공백 3칸까지)에서 열고 닫을 때만 본다. 파이썬 3.11+ 트레이스백의 "~~~~^^^" 표시를
+	// 펜스로 잘못 보면 그 뒤 설명이 통째로 지워진다.
+	private static final Pattern TILDE_FENCE = Pattern
+			.compile("(?ms)^ {0,3}(~{3,})[\\w+.-]*[ \\t]*$.*?(?:^ {0,3}\\1~*[ \\t]*$|\\z)");
 
 	private CodeBlockStripper() {
 	}
@@ -21,7 +26,9 @@ public final class CodeBlockStripper {
 		if (text == null) {
 			return null;
 		}
-		return stripMultilineInline(FENCE.matcher(text).replaceAll(Matcher.quoteReplacement(PLACEHOLDER)));
+		String replacement = Matcher.quoteReplacement(PLACEHOLDER);
+		String noFences = TILDE_FENCE.matcher(BACKTICK_FENCE.matcher(text).replaceAll(replacement)).replaceAll(replacement);
+		return stripMultilineInline(noFences);
 	}
 
 	/** 백틱을 앞에서부터 짝지어, 짝 안에 줄바꿈이 있으면 여러 줄 코드로 보고 지운다. */

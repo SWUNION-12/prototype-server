@@ -41,4 +41,10 @@ class CodeBlockStripperTest {
 		assertThat(CodeBlockStripper.strip(null)).isNull();
 		assertThat(CodeBlockStripper.strip("코드 없음")).isEqualTo("코드 없음");
 	}
+
+	@Test
+	void pythonTracebackMarkersAreNotFences() {
+		String tb = "3번째 줄을 보세요:\n    print(scores[3])\n          ~~~~~~^^^\nIndexError: list index out of range";
+		assertThat(CodeBlockStripper.strip(tb)).isEqualTo(tb);
+	}
 }

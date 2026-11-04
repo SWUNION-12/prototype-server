@@ -38,6 +38,9 @@ public class AgentTools {
 	// 재시작마다 IDE 응답을 최대 60초 기다린다.
 	static final int MAX_RESTARTS = 2;
 	static final int OUTPUT_TAIL = 1500;
+	// AgentAction 컬럼 길이. 코드 블록 자리 안내 문구가 원문보다 길 수 있어 지운 뒤에 다시 자른다.
+	static final int MAX_EXPLANATION = 4000;
+	static final int MAX_SUMMARY = 2000;
 	private static final int LOG_PART = 300;
 
 	/** 인자 규칙. enumValues가 있으면 그 값만 허용. 모든 인자는 필수 문자열이다. */
@@ -235,7 +238,7 @@ public class AgentTools {
 		}
 		String meaning = CodeBlockStripper.strip(args.get("meaning"));
 		String where = CodeBlockStripper.strip(args.get("where_to_look"));
-		state.explanation = meaning + "\n\n확인할 곳: " + where;
+		state.explanation = AgentContext.truncate(meaning + "\n\n확인할 곳: " + where, MAX_EXPLANATION);
 		boolean stripped = !meaning.equals(args.get("meaning")) || !where.equals(args.get("where_to_look"));
 		return logged(call, state, args, stripped ? "설명을 저장했습니다. 코드 블록은 서버가 지웠습니다." : "설명을 저장했습니다.",
 				false);
@@ -248,7 +251,7 @@ public class AgentTools {
 
 	private ToolResult finish(ToolCall call, RunState state, Map<String, String> args) {
 		state.classification = Classification.valueOf(args.get("classification"));
-		state.summary = CodeBlockStripper.strip(args.get("summary").strip());
+		state.summary = AgentContext.truncate(CodeBlockStripper.strip(args.get("summary").strip()), MAX_SUMMARY);
 		state.finished = true;
 		return logged(call, state, args, "실행을 끝냅니다.", false);
 	}

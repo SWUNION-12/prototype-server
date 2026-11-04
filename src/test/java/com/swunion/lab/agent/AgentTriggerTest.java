@@ -102,4 +102,61 @@ class AgentTriggerTest {
 		assertThat(key).startsWith("sha256:").hasSizeLessThan(100);
 		assertThat(AgentTrigger.signatureKey(longSig)).isEqualTo(key);
 	}
+
+	@Test
+	void helpStillRunsWhenPreCheckThrows() throws Exception {
+		FakeChecker broken = new FakeChecker() {
+			@Override
+			public com.swunion.lab.check.CheckResult check(StudentSession session) {
+				throw new IllegalStateException("docker daemon down");
+			}
+		};
+		AgentTrigger t = new AgentTrigger(runner, broken);
+		try {
+			runner.release.countDown();
+			assertThat(t.onHelp(session(4), 9L, null, "boom")).isTrue();
+			for (int i = 0; i < 100 && t.isRunning(4); i++) {
+				Thread.sleep(50);
+			}
+			assertThat(t.isRunning(4)).isFalse();
+			assertThat(runner.seen).singleElement().satisfies(ctx -> {
+				assertThat(ctx.lastCheck()).isNull();
+				assertThat(ctx.helpRequestId()).isEqualTo(9L);
+			});
+		}
+		finally {
+			t.shutdown();
+		}
+	}
+
+	@Test
+	void exceptionInsideRunClearsRunningAndReportsFailure() throws Exception {
+		List<AgentContext> reported = new CopyOnWriteArrayList<>();
+		AgentRunner throwing = new AgentRunner(null, null, null, null, null, null, null) {
+			@Override
+			public AgentAction run(AgentContext ctx) {
+				throw new IllegalStateException("boom");
+			}
+
+			@Override
+			public AgentAction reportFailure(AgentContext ctx, String detail) {
+				reported.add(ctx);
+				return null;
+			}
+		};
+		AgentTrigger t = new AgentTrigger(throwing, checker);
+		try {
+			assertThat(t.onHelp(session(5), 11L, null, "x")).isTrue();
+			for (int i = 0; i < 100 && (t.isRunning(5) || reported.isEmpty()); i++) {
+				Thread.sleep(50);
+			}
+			assertThat(t.isRunning(5)).isFalse();
+			assertThat(reported).singleElement().satisfies(ctx -> assertThat(ctx.helpRequestId()).isEqualTo(11L));
+			// 정리가 됐으니 같은 세션의 다음 요청을 받는다
+			assertThat(t.onHelp(session(5), 12L, null, "y")).isTrue();
+		}
+		finally {
+			t.shutdown();
+		}
+	}
 }

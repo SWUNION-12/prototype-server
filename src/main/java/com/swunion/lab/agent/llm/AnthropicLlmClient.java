@@ -24,7 +24,10 @@ public class AnthropicLlmClient implements LlmClient {
 
 	private static final Logger log = LoggerFactory.getLogger(AnthropicLlmClient.class);
 	static final String BASE_URL = "https://api.anthropic.com";
-	private static final int MAX_TOKENS = 1024;
+	// claude-haiku-5-5는 thinking 파라미터 없이도 adaptive thinking을 하고, thinking 토큰도 max_tokens에 든다.
+	// 1024로는 설명(최대 1,200자)과 thinking을 함께 담기 어렵다. thinking을 끄지 않고 effort를 낮춰 양을 줄인다.
+	static final int MAX_TOKENS = 4096;
+	static final String EFFORT = "low";
 
 	private final RestClient rest;
 	private final ApiKeyResolver keys;
@@ -69,6 +72,7 @@ public class AnthropicLlmClient implements LlmClient {
 		Map<String, Object> body = new LinkedHashMap<>();
 		body.put("model", props.llmModel());
 		body.put("max_tokens", MAX_TOKENS);
+		body.put("output_config", Map.of("effort", EFFORT));
 		if (system != null && !system.isEmpty()) {
 			body.put("system", system);
 		}
@@ -97,6 +101,11 @@ public class AnthropicLlmClient implements LlmClient {
 			case UserText u -> {
 				msg.put("role", "user");
 				msg.put("content", u.text());
+			}
+			case AssistantTurn a when a.providerContent() != null -> {
+				// 받은 그대로(thinking·서명·순서 유지) 돌려보낸다. 다시 만들면 thinking 블록이 빠진다.
+				msg.put("role", "assistant");
+				msg.put("content", a.providerContent());
 			}
 			case AssistantTurn a -> {
 				msg.put("role", "assistant");
@@ -152,7 +161,9 @@ public class AnthropicLlmClient implements LlmClient {
 				}
 			}
 			String stop = root.path("stop_reason").isString() ? root.path("stop_reason").asString() : null;
-			return new LlmResponse(text.toString(), calls, stop);
+			// Jackson 버전과 무관하게 직렬화되도록 JsonNode가 아니라 순수 List/Map으로 바꿔 둔다.
+			List<Object> original = json.convertValue(content, List.class);
+			return new LlmResponse(text.toString(), calls, stop, original);
 		} catch (LlmException e) {
 			throw e;
 		} catch (RuntimeException e) {

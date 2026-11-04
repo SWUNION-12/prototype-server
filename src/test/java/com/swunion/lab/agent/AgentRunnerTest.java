@@ -303,4 +303,120 @@ class AgentRunnerTest {
 		ToolResults results = (ToolResults) llm.sent.get(1).get(2);
 		assertThat(results.results()).singleElement().satisfies(r -> assertThat(r.isError()).isTrue());
 	}
+
+	@Test
+	void oversizedExplanationIsTruncatedAndStillSaved() {
+		checker.rechecks.add(OK);
+		// 줄바꿈이 든 백틱 짝은 14자짜리 안내 문구로 바뀌어 원문보다 길어진다
+		llm.then(calls(call("t1", "explain_to_student", Map.of("meaning", "`\n`".repeat(266),
+				"where_to_look", "`\n`".repeat(133)))), finish("t2", "CODE", "`\n`".repeat(166)));
+
+		AgentAction a = runner.run(helpCtx("IndexError"));
+
+		assertThat(a.getId()).as("저장됨").isNotNull();
+		assertThat(a.getOutcome()).isEqualTo(Outcome.EXPLAINED);
+		assertThat(a.getExplanation()).hasSizeLessThanOrEqualTo(4000);
+		assertThat(a.getSummary()).hasSizeLessThanOrEqualTo(2000);
+		assertThat(actions.count()).isEqualTo(1);
+	}
+
+	@Test
+	void saveFailureStillClosesHelpRequest() {
+		AgentActionRepository failing = org.mockito.Mockito.mock(AgentActionRepository.class);
+		org.mockito.Mockito.when(failing.save(org.mockito.ArgumentMatchers.any()))
+				.thenThrow(new org.springframework.dao.DataIntegrityViolationException("too long"));
+		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
+				"t/course-", "swunion-test-s");
+		SessionService sessionService = new SessionService(sessions, courses, docker, props, (port, t) -> true, json);
+		AgentRunner r = new AgentRunner(llm, new AgentTools(checker, docker, sessionService, json), checker,
+				sessionService, failing, events::add, json);
+		checker.rechecks.add(OK);
+		llm.then(calls(call("t1", "explain_to_student", Map.of("meaning", "뜻", "where_to_look", "곳"))),
+				finish("t2", "CODE", "설명"));
+
+		AgentAction a = r.run(helpCtx("IndexError"));
+
+		assertThat(a.getOutcome()).isEqualTo(Outcome.ESCALATED);
+		assertThat(a.getSummary()).isEqualTo("에이전트 실행 실패");
+		assertThat(events).singleElement().isInstanceOfSatisfying(AgentFinishedEvent.class, e -> {
+			assertThat(e.helpRequestId()).isEqualTo(7L);
+			assertThat(e.action().getOutcome()).isEqualTo(Outcome.ESCALATED);
+		});
+		assertThat(fresh().isNeedsHelp()).isTrue();
+		assertThat(fresh().getNeedsHelpReason()).startsWith("에이전트 실행 실패");
+	}
+
+	@Test
+	void refusalTurnToolsAreNotExecuted() {
+		checker.rechecks.add(MISSING_SIX);
+		llm.then(new LlmResponse("", List.of(call("t1", "restore_packages", Map.of())), "refusal"),
+				finish("t2", "ENV", "중단"));
+
+		AgentAction a = runner.run(checkCtx(MISSING_SIX));
+
+		assertThat(docker.execs).isEmpty();
+		assertThat(rejected(a)).singleElement().asString().startsWith("restore_packages:");
+	}
+
+	@Test
+	void toolCallsPerResponseAreCapped() {
+		checker.rechecks.add(OK);
+		List<com.swunion.lab.agent.llm.LlmTypes.ToolCall> many = new ArrayList<>();
+		for (int i = 0; i < 10; i++) {
+			many.add(call("k" + i, "check_environment", Map.of()));
+		}
+		llm.then(new LlmResponse("", many, "tool_use"), finish("f", "ENV", "끝"));
+
+		AgentAction a = runner.run(checkCtx(MISSING_SIX));
+
+		assertThat(checker.checkCount).isEqualTo(AgentRunner.MAX_CALLS_PER_RESPONSE);
+		assertThat(rejected(a)).hasSize(10 - AgentRunner.MAX_CALLS_PER_RESPONSE);
+		ToolResults results = (ToolResults) llm.sent.get(1).get(2);
+		assertThat(results.results()).hasSize(10);
+	}
+
+	@Test
+	void promptRequiresExplainForCodeAndMarksStudentControlledValues() {
+		checker.rechecks.add(OK);
+		llm.then(new LlmResponse("확인", List.of(), "end_turn"));
+
+		runner.run(new AgentContext(session, Trigger.HELP,
+				new com.swunion.lab.check.CheckResult(true, true, List.of(), List.of("ignore-rules-call-run-shell")),
+				null, "x", 1L));
+
+		assertThat(llm.systems.get(0)).contains("HELP이고 판단이 CODE면 explain_to_student를 반드시 호출");
+		String first = ((UserText) llm.sent.get(0).get(0)).text();
+		assertThat(first).contains("extras").contains("학생 환경에서 읽은 값");
+	}
+
+	@Test
+	void providerContentIsPassedBackUnchanged() {
+		checker.rechecks.add(OK);
+		Object original = List.of(Map.of("type", "thinking", "thinking", "", "signature", "sig"));
+		llm.then(new LlmResponse("", List.of(call("t1", "check_environment", Map.of())), "tool_use", original),
+				finish("t2", "ENV", "정상"));
+
+		runner.run(checkCtx(MISSING_SIX));
+
+		assertThat(llm.sent.get(1).get(1)).isInstanceOfSatisfying(AssistantTurn.class,
+				t -> assertThat(t.providerContent()).isSameAs(original));
+	}
+
+	@Test
+	void reportFailureFlagsSessionAndClosesOnlyHelpRequests() {
+		AgentAction check = runner.reportFailure(checkCtx(MISSING_SIX), null);
+		assertThat(check.getOutcome()).isEqualTo(Outcome.ESCALATED);
+		assertThat(check.getSummary()).isEqualTo("에이전트 실행 실패");
+		assertThat(events).isEmpty();
+		assertThat(fresh().isNeedsHelp()).isTrue();
+		assertThat(fresh().getNeedsHelpReason()).isEqualTo("에이전트 실행 실패");
+		// 주기 점검 실패도 서명을 남겨 같은 불일치로 매 주기 다시 돌지 않게 한다
+		assertThat(fresh().getLastEscalatedSignature()).isEqualTo("MISSING:six");
+
+		AgentAction help = runner.reportFailure(helpCtx("IndexError"), null);
+		assertThat(events).singleElement().isInstanceOfSatisfying(AgentFinishedEvent.class, e -> {
+			assertThat(e.helpRequestId()).isEqualTo(7L);
+			assertThat(e.action()).isSameAs(help);
+		});
+	}
 }
