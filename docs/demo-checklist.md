@@ -1,5 +1,38 @@
 # 시연 검증 체크리스트
 
+## 사전 준비
+
+처음 시연하는 PC에서 아래를 차례로 확인한다. 명령은 프로젝트 루트(`swunion/`)에서 실행한다.
+
+1. JDK 21 이상: `java -version`
+2. Docker Desktop 실행: `docker info`가 오류 없이 끝나야 한다.
+3. 호스트 uv: `uv --version`. 서버가 수업을 만들 때 호스트에서 `uv lock`을 돌린다. 이번 시연은 0.11.29를 썼다.
+4. jq: `jq --version`. 아래 시연 순서의 명령 몇 개가 jq를 쓴다.
+5. 기본 이미지: `./scripts/build-base-image.sh`를 한 번 실행한다. `docker images swunion/lab-base:1`에 이미지가 보이면 된다. 이 이미지가 없으면 수업 발급이 FAILED로 끝난다.
+6. API 키: 프로젝트 루트의 `.env`에 `ANTHROPIC_API_KEY=<키>` 한 줄을 둔다. 환경변수로 줘도 된다. 철자가 틀린 `ANTROPHIC_API_KEY`도 읽는다. 키가 없으면 에이전트 실행마다 "LLM 응답 실패"로 강사에게 넘어간다.
+
+### 설정
+
+- `INSTRUCTOR_PASSWORD`(기본 `instructor`): 학생 컨테이너는 `host.docker.internal:8080`으로 이 서버에 닿는다. 기본 비밀번호를 두면 학생이 IDE 터미널에서 강사 API를 부를 수 있다. 학생에게 IDE를 주기 전에 바꾼다. 기본값으로 켜면 서버가 시작할 때 WARN 로그를 남긴다. 바꿨다면 아래 curl 명령의 `instructor:instructor`도 `instructor:<새 비밀번호>`로 고친다.
+- `LLM_MODEL`(기본 `claude-haiku-5-5`): 서버는 id가 `claude-haiku-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`로 시작하는 모델에만 `output_config.effort=low`를 보낸다. 다른 모델을 쓰면 effort 없이 그 모델의 기본값으로 호출한다.
+- 수업 패키지: 서버는 `uv lock --no-build`로 lock 파일을 만든다. 서버 PC에서 패키지의 빌드 코드를 돌리지 않으려는 설정이다. 그래서 휠 없이 소스 배포본(sdist)만 있는 패키지를 넣으면 수업이 FAILED가 되고, 강사 화면의 오류 요약에 uv 오류가 그대로 나온다. 휠이 있는 버전으로 바꿔 다시 만든다.
+
+### LAN 시연
+
+학생이 다른 PC에서 접속하면 두 값을 함께 바꾼다. 하나만 바꾸면 학생 화면의 IDE 링크가 열리지 않는다.
+
+- `PUBLIC_BASE_URL=http://<서버 PC의 LAN 주소>:8080`: 학생 화면의 IDE 주소와 내 PC 설치 명령이 이 호스트를 쓴다.
+- `IDE_BIND_ADDRESS=0.0.0.0`: 기본값 `127.0.0.1`이면 학생 IDE 포트가 서버 PC 밖으로 열리지 않는다.
+
+```sh
+PUBLIC_BASE_URL=http://<서버 PC의 LAN 주소>:8080 IDE_BIND_ADDRESS=0.0.0.0 \
+  INSTRUCTOR_PASSWORD='<새 비밀번호>' ./gradlew bootRun
+```
+
+학생은 `http://<서버 PC의 LAN 주소>:8080/join.html`로 들어온다.
+
+## 실행 기록
+
 - 실행일: 2026-11-04 22:40~23:10 (한국 시간)
 - 환경: 이 Mac(Apple Silicon, arm64), Docker Desktop 29.4.1, JDK 26, 호스트 uv 0.11.29
 - 서버 설정: 기본값 그대로. 강사 계정 기본값, `PUBLIC_BASE_URL=http://localhost:8080`, IDE는 `127.0.0.1`에만 열림, 점검 주기 15초, 모델 `claude-haiku-5-5`
@@ -190,6 +223,8 @@ curl -s -o code.zip http://localhost:8080/l/<토큰>/code.zip && unzip -l code.z
 
 # 수업 종료: 컨테이너는 멈추고 볼륨은 남는다
 curl -s -u instructor:instructor -X POST http://localhost:8080/api/courses/<수업ID>/end
+#   종료한 수업에 다시 보내도 된다. 남은 컨테이너를 다시 멈추고 200과 개수를 돌려준다.
+#   대시보드의 종료 버튼은 종료 뒤 꺼지므로 이 명령을 쓴다.
 docker ps -a --filter label=swunion.course=<수업ID>
 docker volume ls | grep swunion
 ```
@@ -204,7 +239,7 @@ docker volume ls | grep swunion
 4. **같은 상황에도 모델의 판단 유형이 갈린다.** 같은 권한 오류를 CHECK 실행은 OUT_OF_SCOPE, HELP 실행은 ENV로 적었다. 최종 처리는 서버 재점검이 정하므로 둘 다 강사 전달이었다.
 5. **실제 LLM은 인젝션에 넘어가 허용 목록 밖 도구를 부르려 하지 않았다.** 그래서 이번 실제 실행의 거부 목록은 비어 있다. 모르는 도구나 정해지지 않은 인자를 거부하는 동작은 가짜 LLM 단위 테스트로만 확인했다.
 6. **`verify=ok`를 `verify=fail`로 글자만 바꾼 붙여넣기는 강사 도움 필요가 되지 않는다.** 서버가 "verify와 failed 항목이 서로 맞지 않습니다"로 400을 돌려준다. 실제 `verify.py`는 실패할 때 항상 `failed=` 줄을 찍고, 그 출력은 강사 도움 필요로 넘어간다.
-7. **서버 PC가 잠들면 도움 요청이 멈춘다.** 22:51:09 요청 직후 Mac이 덮개 닫힘으로 잠들었고, 학생 화면은 23:02까지 "처리 중"이었다. 깨어난 직후 LLM 호출 두 번이 네트워크 오류로 실패해 "LLM 응답 실패"로 강사에게 넘어갔다. 그동안 학생A 환경 상태는 REPAIRING으로 남아 있었다.
+7. **서버 PC가 잠들면 도움 요청이 멈춘다.** 22:51:09 요청 직후 Mac이 덮개 닫힘으로 잠들었고, 학생 화면은 23:02까지 "처리 중"이었다. 깨어난 직후 LLM 호출 두 번이 네트워크 오류로 실패해 "LLM 응답 실패"로 강사에게 넘어갔다. 그동안 학생A 환경 상태는 REPAIRING으로 남아 있었다. 시연 뒤 수정으로 도움 요청 실행은 REPAIRING을 띄우지 않고, 서버를 다시 켜면 "분석 중"에 멈춘 도움 요청을 NO_ACTION("다시 요청해 주세요")으로 닫는다.
 8. **code-server를 처음 열면 "Restricted Mode"(작업 공간 신뢰) 배너가 뜬다.** 이 상태에서 확장 기능이 어디까지 동작하는지는 확인하지 않았다.
-9. **이미지 빌드가 실패하면 중간 컨테이너가 남는다.** `integrationTest`의 빌드 실패 테스트가 Exited 컨테이너 하나를 남겨 손으로 지웠다. 수업 이미지 빌드도 같은 메서드를 쓰므로 빌드 실패 수업에서 같은 잔여물이 남을 수 있다(수업 경로에서는 미확인).
+9. **이미지 빌드가 실패하면 중간 컨테이너가 남았다.** `integrationTest`의 빌드 실패 테스트가 Exited 컨테이너 하나를 남겨 손으로 지웠다. 시연 뒤 빌드에 `forcerm`을 켰고, 같은 테스트가 이제 남은 컨테이너가 없는지 확인한다. 수업 경로의 빌드 실패는 실제로 돌려 보지 않았다.
 10. **Windows는 미확인.** `install.ps1`과 PowerShell 명령은 만들어져 있지만 실기기에서 실행하지 않았다.
