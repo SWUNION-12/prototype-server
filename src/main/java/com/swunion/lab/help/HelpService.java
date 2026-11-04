@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 public class HelpService {
 
 	static final int MAX_ERROR_TEXT = 4000;
+	static final int MAX_EXTRACT_INPUT = 100_000;
 
 	private final HelpRequestRepository helps;
 	private final SessionService sessions;
@@ -26,7 +27,8 @@ public class HelpService {
 			throw new HelpBusyException();
 		}
 		String text = normalize(errorText);
-		String type = ErrorTypeExtractor.extract(text).orElse(null);
+		// 마지막 줄이 최종 오류인 traceback은 4,000자 뒤에 있을 수 있어, 자르기 전 원문의 꼬리에서 뽑는다.
+		String type = text == null ? null : ErrorTypeExtractor.extract(tail(errorText)).orElse(null);
 		HelpRequest help = helps.save(new HelpRequest(s, type, text));
 		// isRunning 확인과 onHelp 사이에 다른 실행이 끼면 false가 온다. 아무도 결과를 채우지 않으므로 지운다.
 		if (!trigger.onHelp(s, help.getId(), type, text)) {
@@ -44,6 +46,10 @@ public class HelpService {
 
 	public HelpRequest latest(long sessionId) {
 		return helps.findFirstBySessionIdOrderByIdDesc(sessionId).orElse(null);
+	}
+
+	static String tail(String text) {
+		return text.length() <= MAX_EXTRACT_INPUT ? text : text.substring(text.length() - MAX_EXTRACT_INPUT);
 	}
 
 	static String normalize(String text) {

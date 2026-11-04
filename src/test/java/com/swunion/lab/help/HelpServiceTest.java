@@ -68,6 +68,17 @@ class HelpServiceTest {
 	}
 
 	@Test
+	void errorTypeComesFromUntruncatedText() {
+		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
+		String text = "KeyError: 'a'\n" + "x".repeat(4500) + "\nValueError: late";
+		HelpRequest h = service.request("tok", text);
+		assertThat(h.getErrorText()).hasSize(4000);
+		assertThat(h.getErrorType()).isEqualTo("ValueError");
+		String huge = "KeyError: early\n" + "y".repeat(150_000) + "\nTypeError: tail";
+		assertThat(service.request("tok", huge).getErrorType()).isEqualTo("TypeError");
+	}
+
+	@Test
 	void truncationKeepsSurrogatePairsWhole() {
 		String text = "a".repeat(3999) + "😀" + "b";
 		String out = HelpService.normalize(text);

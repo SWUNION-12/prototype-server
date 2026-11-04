@@ -18,14 +18,14 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
 	// 에이전트 스레드와 학생 요청이 같은 행을 다루므로 필요한 컬럼만 갱신한다.
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update HelpRequest h set h.status = :status, h.explanation = :explanation, h.escalated = :escalated"
+	@Query("update HelpRequest h set h.status = :status, h.explanation = :explanation, h.escalated = case when h.escalated = true then true else :escalated end"
 			+ " where h.id = :id")
 	int updateResult(@Param("id") long id, @Param("status") HelpStatus status,
 			@Param("explanation") String explanation, @Param("escalated") boolean escalated);
 
-	/** 에이전트가 아직 도는 요청은 건드리지 않는다. 결과 갱신이 escalated를 덮어쓰기 때문이다. */
+	/** 처리 중에 눌러도 남는다. updateResult가 escalated를 내리지 않기 때문이다. */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update HelpRequest h set h.escalated = true where h.id = :id and h.status <> 'PROCESSING'")
+	@Query("update HelpRequest h set h.escalated = true where h.id = :id")
 	int markEscalated(@Param("id") long id);
 }
