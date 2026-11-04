@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "/opt/venv/bin/python",
+  "terminal.integrated.env.linux": {
+    "PATH": "/opt/venv/bin:${env:PATH}"
+  },
+  "workbench.startupEditor": "none"
+}
