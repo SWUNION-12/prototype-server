@@ -2,6 +2,8 @@ package com.swunion.lab.help;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +14,7 @@ import com.swunion.lab.agent.AgentTrigger;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
+import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.session.HealthWaiter;
 import com.swunion.lab.session.SessionRepository;
@@ -49,7 +52,13 @@ class HelpControllerTest {
 	AgentTrigger trigger;
 
 	private String newToken(String tok) {
-		Course c = courses.save(new Course("c", "3.12", "six==1.16.0"));
+		return newToken(tok, CourseStatus.READY);
+	}
+
+	private String newToken(String tok, CourseStatus status) {
+		Course c = new Course("c", "3.12", "six==1.16.0");
+		c.setStatus(status);
+		c = courses.save(c);
 		sessions.save(new StudentSession(c, "철수", tok, "pw"));
 		return tok;
 	}
@@ -91,5 +100,24 @@ class HelpControllerTest {
 		mvc.perform(post("/api/s/nope/help").contentType(MediaType.APPLICATION_JSON).content("{}"))
 				.andExpect(status().isNotFound());
 		mvc.perform(post("/api/s/nope/escalate")).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void endedCourseRejectsHelpAndEscalate() throws Exception {
+		String tok = newToken("t-ended", CourseStatus.ENDED);
+		when(trigger.isRunning(anyLong())).thenReturn(false);
+		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
+
+		mvc.perform(post("/api/s/" + tok + "/help").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"errorText\":\"KeyError: 'a'\"}"))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("종료된 수업입니다"));
+		mvc.perform(post("/api/s/" + tok + "/escalate"))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("종료된 수업입니다"));
+
+		// 종료 뒤의 도움 요청이 에이전트를 깨워 restart_ide로 컨테이너를 되살리면 안 된다.
+		verify(trigger, never()).onHelp(any(), anyLong(), any(), any());
+		mvc.perform(get("/api/s/" + tok)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.needsHelp").value(false))
+				.andExpect(jsonPath("$.latestHelp").doesNotExist());
 	}
 }

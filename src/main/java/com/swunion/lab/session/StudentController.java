@@ -1,5 +1,6 @@
 package com.swunion.lab.session;
 
+import com.swunion.lab.help.CourseEndedException;
 import com.swunion.lab.help.HelpBusyException;
 import com.swunion.lab.help.HelpRequest;
 import com.swunion.lab.help.HelpService;
@@ -81,6 +82,11 @@ public class StudentController {
 
 	@ExceptionHandler(HelpBusyException.class)
 	ResponseEntity<Map<String, String>> busy(HelpBusyException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+	}
+
+	@ExceptionHandler(CourseEndedException.class)
+	ResponseEntity<Map<String, String>> courseEnded(CourseEndedException e) {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
 	}
 

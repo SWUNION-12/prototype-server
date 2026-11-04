@@ -3,6 +3,7 @@ package com.swunion.lab.dashboard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -189,7 +190,7 @@ class DashboardControllerTest {
 	}
 
 	@Test
-	void endStopsContainersOnceThenConflicts() throws Exception {
+	void endStopsContainersAndCanBeRepeated() throws Exception {
 		Course c = course("CTRL04", CourseStatus.READY);
 		student(c, "가영", "e");
 		student(c, "나리", "f");
@@ -203,8 +204,14 @@ class DashboardControllerTest {
 		verify(docker).stop(CONTAINER_ID + "f");
 		verify(docker, never()).removeVolume(anyString());
 
+		// 이미 종료된 수업도 다시 종료할 수 있다. 남아 있거나 되살아난 컨테이너를 다시 멈춘다.
 		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(httpBasic("instructor", "instructor")))
-				.andExpect(status().isConflict()).andExpect(jsonPath("$.error").isString());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ENDED"))
+				.andExpect(jsonPath("$.stopped").value(2))
+				.andExpect(jsonPath("$.failed").value(0));
+		verify(docker, times(2)).stop(CONTAINER_ID + "e");
+		verify(docker, times(2)).stop(CONTAINER_ID + "f");
 		mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(httpBasic("instructor", "instructor")))
 				.andExpect(jsonPath("$.course.status").value("ENDED"))
 				.andExpect(jsonPath("$.students[0].containerRunning").value(false));

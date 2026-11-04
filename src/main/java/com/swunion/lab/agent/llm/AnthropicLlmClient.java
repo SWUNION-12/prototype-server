@@ -28,6 +28,10 @@ public class AnthropicLlmClient implements LlmClient {
 	// 1024로는 설명(최대 1,200자)과 thinking을 함께 담기 어렵다. thinking을 끄지 않고 effort를 낮춰 양을 줄인다.
 	static final int MAX_TOKENS = 4096;
 	static final String EFFORT = "low";
+	// effort를 모르는 모델(예: claude-haiku-4-5)은 output_config.effort가 있으면 400을 돌려 모든 실행이 실패한다.
+	// Claude 5 계열만 보낸다. 다른 모델은 effort 없이 모델 기본값으로 돈다.
+	static final List<String> EFFORT_MODEL_PREFIXES = List.of("claude-haiku-5", "claude-sonnet-5", "claude-opus-5",
+			"claude-fable-5");
 
 	private final RestClient rest;
 	private final ApiKeyResolver keys;
@@ -72,7 +76,9 @@ public class AnthropicLlmClient implements LlmClient {
 		Map<String, Object> body = new LinkedHashMap<>();
 		body.put("model", props.llmModel());
 		body.put("max_tokens", MAX_TOKENS);
-		body.put("output_config", Map.of("effort", EFFORT));
+		if (supportsEffort(props.llmModel())) {
+			body.put("output_config", Map.of("effort", EFFORT));
+		}
 		if (system != null && !system.isEmpty()) {
 			body.put("system", system);
 		}
@@ -93,6 +99,10 @@ public class AnthropicLlmClient implements LlmClient {
 			body.put("tools", specs);
 		}
 		return body;
+	}
+
+	static boolean supportsEffort(String model) {
+		return model != null && EFFORT_MODEL_PREFIXES.stream().anyMatch(model::startsWith);
 	}
 
 	private Map<String, Object> toMessage(Turn turn) {

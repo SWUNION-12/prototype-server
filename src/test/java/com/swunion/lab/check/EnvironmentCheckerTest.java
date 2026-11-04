@@ -138,7 +138,18 @@ class EnvironmentCheckerTest {
 		assertThat(sessions.findById(id)).isEmpty();
 	}
 
+	@Test
+	void commandsUseRootOwnedAbsolutePaths() {
+		// PATH의 첫 항목 /opt/venv/bin은 학생(coder)이 쓸 수 있다. 거기에 uv나 cat을 두면 점검 결과를 속일 수 있다.
+		checker.check(session("t6", "c6"));
+		assertThat(docker.commands).containsExactlyInAnyOrder(
+				List.of("/opt/venv/bin/python", "-c", "import platform;print(platform.python_version())"),
+				List.of("/usr/local/bin/uv", "pip", "list", "--python", "/opt/venv/bin/python", "--format", "json"),
+				List.of("/bin/cat", "/proc/net/tcp", "/proc/net/tcp6"));
+	}
+
 	static class FakeDocker implements DockerGateway {
+		final List<List<String>> commands = new java.util.ArrayList<>();
 		boolean running = true;
 		boolean throwOnExec;
 		String throwOnExecFor;
@@ -147,6 +158,7 @@ class EnvironmentCheckerTest {
 		String packages = "[{\"name\":\"six\",\"version\":\"1.16.0\"},{\"name\":\"pip\",\"version\":\"24\"}]";
 
 		public ExecResult exec(String id, List<String> cmd, Duration t) {
+			commands.add(List.copyOf(cmd));
 			if (onExec != null) {
 				onExec.run();
 			}

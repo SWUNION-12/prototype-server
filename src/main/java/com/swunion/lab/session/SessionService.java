@@ -24,6 +24,8 @@ public class SessionService {
 	private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 	static final Duration HEALTH_TIMEOUT = Duration.ofSeconds(60);
 	static final int IDE_PORT = 8080;
+	// StudentSession.needsHelpReason 컬럼 길이
+	private static final int MAX_REASON = 4000;
 	// 0/O, 1/l/I처럼 헷갈리는 글자를 뺀 집합. 학생이 손으로 입력할 수 있다.
 	private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
@@ -64,48 +66,77 @@ public class SessionService {
 		session.setVolumeName(resourceName);
 		session = sessions.save(session);
 		String containerId = null;
+		long sid = session.getId();
 		try {
 			ContainerSpec spec = new ContainerSpec(resourceName, course.getImageName(),
 					Map.of("PASSWORD", session.getIdePassword()), resourceName, "/home/coder/project",
 					props.ideBindAddress(), IDE_PORT,
-					Map.of("swunion.session", String.valueOf(session.getId()), "swunion.course",
-							String.valueOf(course.getId())));
+					Map.of("swunion.session", String.valueOf(sid), "swunion.course", String.valueOf(course.getId())));
 			long t0 = System.nanoTime();
 			containerId = docker.createAndStart(spec);
+			int hostPort = docker.hostPort(containerId, IDE_PORT);
+			// containerId가 들어가는 순간부터 점검과 에이전트가 이 행을 쓴다. 이후로는 엔티티 전체를 save하지 않는다.
+			sessions.updateContainerCreated(sid, containerId, hostPort);
 			session.setContainerId(containerId);
-			session.setHostPort(docker.hostPort(containerId, IDE_PORT));
+			session.setHostPort(hostPort);
 			session.setContainerRunning(true);
-			session = sessions.save(session);
-			if (health.awaitHealthy(session.getHostPort(), HEALTH_TIMEOUT)) {
-				session.setStartupMillis(Duration.ofNanos(System.nanoTime() - t0).toMillis());
-				session = sessions.save(session);
+			// 수업 종료는 READY→ENDED로 바꾼 다음 containerId가 있는 세션만 멈춘다. 위 입장 확인과 지금 사이에
+			// 종료가 끼었다면 종료는 이 컨테이너를 못 봤을 수 있으니 직접 치운다. 순서상 둘 중 하나는 반드시 본다.
+			if (courses.findStatusById(course.getId()).orElse(null) != CourseStatus.READY) {
+				log.warn("세션 {}: 입장 중에 수업이 종료되어 방금 만든 컨테이너를 지웁니다.", sid);
+				discard(sid, containerId, resourceName, true);
+				throw new JoinException("종료된 수업입니다");
+			}
+			if (health.awaitHealthy(hostPort, HEALTH_TIMEOUT)) {
+				long millis = Duration.ofNanos(System.nanoTime() - t0).toMillis();
+				sessions.updateStartupMillis(sid, millis);
+				session.setStartupMillis(millis);
 			}
 			else {
-				log.warn("세션 {}의 code-server가 {}초 안에 응답하지 않았습니다.", session.getId(), HEALTH_TIMEOUT.toSeconds());
+				log.warn("세션 {}의 code-server가 {}초 안에 응답하지 않았습니다.", sid, HEALTH_TIMEOUT.toSeconds());
 			}
 			return session;
 		}
+		catch (JoinException e) {
+			throw e;
+		}
 		catch (RuntimeException e) {
-			long sid = session.getId();
 			log.error("세션 {} 컨테이너 생성 실패", sid, e);
-			// 이번 join이 만든 것만 지운다. 컨테이너는 id로, 볼륨은 이 join 전용 이름이라 안전하다.
 			// (createAndStart가 시작 단계에서 실패하면 게이트웨이가 스스로 컨테이너를 지운다.)
-			if (containerId != null) {
+			discard(sid, containerId, resourceName, false);
+			throw new JoinException("컨테이너를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", 500);
+		}
+	}
+
+	/** 이번 join이 만든 것만 지운다. 컨테이너는 id로, 볼륨은 이 join 전용 이름이라 안전하다. */
+	private void discard(long sid, String containerId, String volumeName, boolean stopFirst) {
+		if (containerId != null) {
+			if (stopFirst) {
 				try {
-					docker.remove(containerId);
+					docker.stop(containerId);
 				}
 				catch (RuntimeException ex) {
-					log.warn("세션 {} 컨테이너 정리 실패: {}", sid, ex.getMessage());
+					log.warn("세션 {} 컨테이너 중단 실패: {}", sid, ex.getMessage());
 				}
 			}
 			try {
-				docker.removeVolume(resourceName);
+				docker.remove(containerId);
 			}
 			catch (RuntimeException ex) {
-				log.warn("세션 {} 볼륨 정리 실패: {}", sid, ex.getMessage());
+				log.warn("세션 {} 컨테이너 정리 실패: {}", sid, ex.getMessage());
 			}
+		}
+		try {
+			docker.removeVolume(volumeName);
+		}
+		catch (RuntimeException ex) {
+			log.warn("세션 {} 볼륨 정리 실패: {}", sid, ex.getMessage());
+		}
+		try {
 			sessions.deleteById(sid);
-			throw new JoinException("컨테이너를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", 500);
+		}
+		catch (RuntimeException ex) {
+			log.warn("세션 {} 행 삭제 실패: {}", sid, ex.getMessage());
 		}
 	}
 
@@ -125,6 +156,11 @@ public class SessionService {
 		sessions.updateEscalation(sessionId, reason, signature);
 	}
 
+	/** 이미 있는 이유(예: 에이전트의 "재점검 실패: …")는 지우지 않고 " / reason"으로 덧붙인다. */
+	public void addNeedsHelpReason(long sessionId, String reason) {
+		sessions.appendNeedsHelpReason(sessionId, reason, MAX_REASON - " / ".length() - reason.length());
+	}
+
 	public void clearNeedsHelp(long sessionId) {
 		sessions.updateNeedsHelp(sessionId, false, null);
 	}
@@ -136,9 +172,15 @@ public class SessionService {
 	/**
 	 * 멈춘 컨테이너도 되살린다. 재시작하면 호스트 포트가 바뀔 수 있어 다시 읽어 저장한다.
 	 * 재시작을 기다리는 동안 학생 호출 등이 세션을 바꿀 수 있으므로 포트와 실행 여부만 갱신한다.
+	 * 종료된 수업의 컨테이너는 되살리지 않는다. 종료 뒤에는 점검이 돌지 않아 아무도 다시 멈추지 않는다.
 	 */
 	public boolean restartContainer(long sessionId) {
 		StudentSession s = sessions.findById(sessionId).orElseThrow(SessionNotFoundException::new);
+		CourseStatus status = courses.findStatusById(s.getCourse().getId()).orElse(null);
+		if (status != CourseStatus.READY) {
+			log.warn("세션 {}: 수업 상태가 {}라 컨테이너를 재시작하지 않습니다.", sessionId, status);
+			return false;
+		}
 		docker.restart(s.getContainerId());
 		int port = docker.hostPort(s.getContainerId(), IDE_PORT);
 		sessions.updateContainerState(sessionId, port, true);

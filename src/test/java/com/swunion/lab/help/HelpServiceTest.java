@@ -14,6 +14,8 @@ import com.swunion.lab.agent.AgentAction;
 import com.swunion.lab.agent.AgentFinishedEvent;
 import com.swunion.lab.agent.AgentTrigger;
 import com.swunion.lab.agent.Outcome;
+import com.swunion.lab.course.Course;
+import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.session.SessionNotFoundException;
 import com.swunion.lab.session.SessionService;
 import com.swunion.lab.session.StudentSession;
@@ -29,7 +31,11 @@ class HelpServiceTest {
 	StudentSession session = mock(StudentSession.class);
 	HelpService service = new HelpService(helps, sessions, trigger);
 
+	Course course = new Course("수업", "3.12", "six");
+
 	HelpServiceTest() {
+		course.setStatus(CourseStatus.READY);
+		when(session.getCourse()).thenReturn(course);
 		when(session.getId()).thenReturn(7L);
 		when(sessions.byToken("tok")).thenReturn(session);
 		// IDENTITY가 채워 주는 id를 흉내 낸다.
@@ -109,7 +115,8 @@ class HelpServiceTest {
 		org.springframework.test.util.ReflectionTestUtils.setField(h, "id", 3L);
 		when(helps.findFirstBySessionIdOrderByIdDesc(7L)).thenReturn(Optional.of(h));
 		service.escalate("tok");
-		verify(sessions).flagNeedsHelp(7L, "학생 호출");
+		verify(sessions).addNeedsHelpReason(7L, "학생 호출");
+		verify(sessions, never()).flagNeedsHelp(anyLong(), any());
 		verify(helps).markEscalated(3L);
 	}
 
@@ -117,7 +124,19 @@ class HelpServiceTest {
 	void escalateWithoutHelpOnlyFlags() {
 		when(helps.findFirstBySessionIdOrderByIdDesc(7L)).thenReturn(Optional.empty());
 		service.escalate("tok");
-		verify(sessions).flagNeedsHelp(7L, "학생 호출");
+		verify(sessions).addNeedsHelpReason(7L, "학생 호출");
+		verify(helps, never()).markEscalated(anyLong());
+	}
+
+	@Test
+	void endedCourseRejectsHelpWithoutTouchingAnything() {
+		course.setStatus(CourseStatus.ENDED);
+		assertThatThrownBy(() -> service.request("tok", "KeyError")).isInstanceOf(CourseEndedException.class)
+				.hasMessage("종료된 수업입니다");
+		assertThatThrownBy(() -> service.escalate("tok")).isInstanceOf(CourseEndedException.class);
+		verify(helps, never()).save(any());
+		verify(trigger, never()).onHelp(any(), anyLong(), any(), any());
+		verify(sessions, never()).addNeedsHelpReason(anyLong(), any());
 		verify(helps, never()).markEscalated(anyLong());
 	}
 

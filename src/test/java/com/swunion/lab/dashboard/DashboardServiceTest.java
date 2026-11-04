@@ -415,10 +415,30 @@ class DashboardServiceTest {
 
 		withContainer("가영", "c1");
 		courseService.end(course.getId());
-		assertThatThrownBy(() -> courseService.end(course.getId())).isInstanceOf(CourseStateException.class);
 		assertThat(courseService.end(987654L)).isNull();
 		verify(docker).stop("c1");
 		verify(docker, never()).stop("cb");
+	}
+
+	@Test
+	void endAgainStopsContainersStillRunningAfterFirstEnd() {
+		StudentSession a = withContainer("가영", "c1");
+		withContainer("나리", "c2");
+		CourseService courseService = courseService();
+		doThrow(new DockerOperationException("daemon error")).doNothing().when(docker).stop("c2");
+		when(docker.isRunning("c2")).thenReturn(true);
+
+		assertThat(courseService.end(course.getId())).isEqualTo(new CourseService.EndResult(1, 1));
+
+		// 첫 종료가 못 멈춘 c2, 그 뒤 되살아난 c1(예: 종료 직전 시작된 에이전트의 재시작)을 두 번째 종료가 다시 멈춘다.
+		sessions.updateContainerState(a.getId(), 41000, true);
+		CourseService.EndResult again = courseService.end(course.getId());
+
+		assertThat(again).isEqualTo(new CourseService.EndResult(2, 0));
+		verify(docker, org.mockito.Mockito.times(2)).stop("c1");
+		verify(docker, org.mockito.Mockito.times(2)).stop("c2");
+		assertThat(sessions.findAll()).allSatisfy(s -> assertThat(s.isContainerRunning()).isFalse());
+		assertThat(courses.findById(course.getId()).orElseThrow().getStatus()).isEqualTo(CourseStatus.ENDED);
 	}
 
 	private StudentSession withContainer(Course c, String containerId) {

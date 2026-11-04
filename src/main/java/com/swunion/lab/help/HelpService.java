@@ -1,6 +1,7 @@
 package com.swunion.lab.help;
 
 import com.swunion.lab.agent.AgentTrigger;
+import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.session.SessionService;
 import com.swunion.lab.session.StudentSession;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ public class HelpService {
 
 	static final int MAX_ERROR_TEXT = 4000;
 	static final int MAX_EXTRACT_INPUT = 100_000;
+	static final String STUDENT_CALL = "학생 호출";
 
 	private final HelpRequestRepository helps;
 	private final SessionService sessions;
@@ -23,6 +25,7 @@ public class HelpService {
 
 	public HelpRequest request(String token, String errorText) {
 		StudentSession s = sessions.byToken(token);
+		requireOpenCourse(s);
 		if (trigger.isRunning(s.getId())) {
 			throw new HelpBusyException();
 		}
@@ -40,8 +43,20 @@ public class HelpService {
 
 	public void escalate(String token) {
 		StudentSession s = sessions.byToken(token);
-		sessions.flagNeedsHelp(s.getId(), "학생 호출");
+		requireOpenCourse(s);
+		// 에이전트가 먼저 남긴 이유(예: "재점검 실패: …")를 지우면 강사가 원인을 못 본다. 뒤에 덧붙인다.
+		sessions.addNeedsHelpReason(s.getId(), STUDENT_CALL);
 		helps.findFirstBySessionIdOrderByIdDesc(s.getId()).ifPresent(h -> helps.markEscalated(h.getId()));
+	}
+
+	/**
+	 * 종료된 수업의 도움 요청이 에이전트를 깨우면 사전 점검이 IDE_DOWN을 보고 restart_ide가 멈춘 컨테이너를
+	 * 되살린다. 수업이 열려 있을 때(READY)만 받는다. 세션은 READY 수업에서만 생기므로 그 밖은 종료뿐이다.
+	 */
+	private static void requireOpenCourse(StudentSession s) {
+		if (s.getCourse() == null || s.getCourse().getStatus() != CourseStatus.READY) {
+			throw new CourseEndedException();
+		}
 	}
 
 	public HelpRequest latest(long sessionId) {

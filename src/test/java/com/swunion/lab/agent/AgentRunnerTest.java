@@ -119,6 +119,18 @@ class AgentRunnerTest {
 	}
 
 	@Test
+	void helpRunDoesNotMarkRepairing() {
+		// 도움 요청은 환경 불일치가 아니다. REPAIRING을 띄우면 대시보드가 복구 중으로 잘못 보인다.
+		checker.rechecks.add(OK);
+		llm.then(calls(call("t1", "explain_to_student", Map.of("meaning", "범위를 넘었다는 뜻입니다.",
+				"where_to_look", "main.py 3번째 줄"))), finish("t2", "CODE", "설명"));
+
+		runner.run(helpCtx("IndexError: list index out of range"));
+
+		assertThat(statusAtRecheck).isEqualTo(EnvStatus.UNKNOWN);
+	}
+
+	@Test
 	void recheckFailsEscalatesRegardlessOfModelClaim() {
 		checker.rechecks.add(MISSING_SIX);
 		llm.then(calls(call("t1", "restore_packages", Map.of())), finish("t2", "ENV", "고쳤음"));

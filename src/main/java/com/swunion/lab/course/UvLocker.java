@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
-/** 호스트의 uv로 lock만 실행한다. 사용자 입력은 인자로 쓰지 않고 pyproject.toml 안에만 있다. */
+/** 호스트의 uv로 lock만 실행한다. 사용자 입력은 인자로 쓰지 않고 pyproject.toml 안에만 있다. 소스 빌드는 하지 않는다. */
 @Component
 public class UvLocker {
 
@@ -26,12 +26,20 @@ public class UvLocker {
 		this.uvExecutable = uvExecutable;
 	}
 
+	/**
+	 * --no-build: sdist만 있는 패키지는 메타데이터를 얻으려고 호스트에서 빌드하는데, 그러면 강사가 적은 패키지의
+	 * 빌드 코드가 서버 PC에서 실행된다. 빌드하지 않고 실패시킨다(강사에게는 uv 오류가 그대로 보인다).
+	 */
+	List<String> command() {
+		return List.of(uvExecutable, "--color", "never", "--no-progress", "lock", "--no-build");
+	}
+
 	public LockResult lock(Path specDir) {
 		Path errFile = null;
 		try {
 			// 파이프 버퍼가 차서 멈추지 않도록 stderr는 임시 파일로 받는다.
 			errFile = Files.createTempFile("uv-lock-", ".err");
-			Process p = new ProcessBuilder(List.of(uvExecutable, "--color", "never", "--no-progress", "lock"))
+			Process p = new ProcessBuilder(command())
 					.directory(specDir.toFile())
 					.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
 					.redirectOutput(ProcessBuilder.Redirect.DISCARD)

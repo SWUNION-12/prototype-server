@@ -110,11 +110,14 @@ public class AgentRunner {
 		long sid = ctx.session().getId();
 		RunState state = new RunState();
 		List<String> serverNotes = new ArrayList<>();
-		try {
-			sessions.markRepairing(sid);
-		}
-		catch (RuntimeException e) {
-			log.warn("REPAIRING 표시 실패 session={}: {}", sid, e.getMessage());
+		// REPAIRING은 점검이 찾은 불일치를 고치는 중이라는 뜻이다. 도움 요청은 대개 코드 오류라 표시하지 않는다.
+		if (ctx.trigger() == Trigger.CHECK) {
+			try {
+				sessions.markRepairing(sid);
+			}
+			catch (RuntimeException e) {
+				log.warn("REPAIRING 표시 실패 session={}: {}", sid, e.getMessage());
+			}
 		}
 		try {
 			loop(ctx, state);

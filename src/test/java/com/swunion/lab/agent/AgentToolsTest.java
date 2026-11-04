@@ -111,7 +111,7 @@ class AgentToolsTest {
 		docker.execResult = new ExecResult(0, "", "Installed 1 package in 3ms\n + six==1.16.0");
 		ToolResult r = tools.execute(check, call("8", "restore_packages", Map.of()), state);
 
-		assertThat(docker.execs).containsExactly(new ExecCall("c1", List.of("uv", "sync", "--frozen", "--inexact"),
+		assertThat(docker.execs).containsExactly(new ExecCall("c1", List.of("/usr/local/bin/uv", "sync", "--frozen", "--inexact"),
 				"/opt/lab/spec", Duration.ofSeconds(120)));
 		assertThat(r.isError()).isFalse();
 		assertThat(r.content()).contains("종료 코드: 0").contains("six==1.16.0");

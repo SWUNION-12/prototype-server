@@ -88,12 +88,13 @@ public class CourseService {
 
 	/**
 	 * 수업의 모든 컨테이너를 멈추고 수업을 ENDED로 바꾼다. 볼륨은 지우지 않는다(학생 코드가 남는다).
-	 * 상태를 먼저 바꾸는 이유: 멈추는 동안 들어오는 입장을 막고, 같은 수업을 동시에 두 번 종료하지 못하게 하려는 것이다.
+	 * 상태를 먼저 바꾸는 이유: 멈추는 동안 들어오는 입장을 막으려는 것이다.
 	 * READY일 때만 바꾸는 조건부 갱신이라 아직 발급 중인 수업을 덮어쓰지 않는다.
+	 * 이미 ENDED면 멈추기만 다시 한다. 첫 종료가 못 멈췄거나 그 뒤 되살아난 컨테이너를 강사가 다시 멈출 수 있어야 한다.
 	 * 트랜잭션을 잡지 않는다: docker stop이 컨테이너마다 몇 초 걸린다.
 	 *
 	 * @return 수업이 없으면 null
-	 * @throws CourseStateException READY가 아닌 수업
+	 * @throws CourseStateException READY도 ENDED도 아닌 수업(발급 중이거나 실패)
 	 */
 	public EndResult end(long id) {
 		Course course = repo.findById(id).orElse(null);
@@ -103,8 +104,9 @@ public class CourseService {
 		if (repo.updateStatusIf(id, CourseStatus.READY, CourseStatus.ENDED) == 0) {
 			// 위 갱신이 영속성 컨텍스트를 비우므로 다시 읽으면 그 사이 바뀐 최신 상태가 나온다.
 			CourseStatus now = repo.findById(id).map(Course::getStatus).orElse(course.getStatus());
-			throw new CourseStateException(now == CourseStatus.ENDED ? "이미 종료된 수업입니다."
-					: "준비가 끝난 수업만 종료할 수 있습니다. 현재 상태: " + now);
+			if (now != CourseStatus.ENDED) {
+				throw new CourseStateException("준비가 끝난 수업만 종료할 수 있습니다. 현재 상태: " + now);
+			}
 		}
 		int stopped = 0;
 		int failed = 0;

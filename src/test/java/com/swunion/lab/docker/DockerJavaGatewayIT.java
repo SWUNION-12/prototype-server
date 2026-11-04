@@ -4,14 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.model.Container;
 import com.swunion.lab.config.DockerConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.junit.jupiter.api.AfterEach;
@@ -138,20 +142,34 @@ class DockerJavaGatewayIT {
 		assertThat(gw.imageExists(tag)).isFalse();
 	}
 
+	private static Set<String> allContainerIds() {
+		return client.listContainersCmd().withShowAll(true).exec().stream().map(Container::getId)
+				.collect(Collectors.toSet());
+	}
+
 	@Test
-	void buildImageFailureCarriesLogTail(@TempDir Path ctx) throws Exception {
+	void buildImageFailureCarriesLogTailAndLeavesNoContainer(@TempDir Path ctx) throws Exception {
 		Files.writeString(ctx.resolve("Dockerfile"), "FROM " + BASE + "\nRUN echo boom-marker && false\n");
 		String tag = "swunion-it-build:" + UUID.randomUUID().toString().substring(0, 8);
+		Set<String> before = allContainerIds();
+		Set<String> leaked = new HashSet<>();
 		try {
 			assertThatThrownBy(() -> gw.buildImage(ctx, tag, l -> {
 			})).isInstanceOf(DockerOperationException.class).hasMessageContaining("boom-marker");
 		}
 		finally {
+			leaked.addAll(allContainerIds());
+			leaked.removeAll(before);
+			// 실패한 RUN 단계의 중간 컨테이너가 남았다면 이 테스트가 만든 것이므로 지운다.
+			for (String id : leaked) {
+				gw.remove(id);
+			}
 			try {
 				client.removeImageCmd(tag).withForce(true).exec();
 			}
 			catch (RuntimeException ignored) {
 			}
 		}
+		assertThat(leaked).as("실패한 빌드의 중간 컨테이너").isEmpty();
 	}
 }

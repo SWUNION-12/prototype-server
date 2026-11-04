@@ -38,6 +38,7 @@ class SessionServiceTest {
 	FakeDocker docker = new FakeDocker();
 	boolean healthy = true;
 	List<Integer> probedPorts = new ArrayList<>();
+	Consumer<Integer> duringHealthWait = port -> { };
 	SessionService service;
 	Course ready;
 
@@ -47,6 +48,7 @@ class SessionServiceTest {
 				"b:1", "t/course-", "swunion-test-s");
 		HealthWaiter waiter = (port, timeout) -> {
 			probedPorts.add(port);
+			duringHealthWait.accept(port);
 			return healthy;
 		};
 		service = new SessionService(sessions, courses, docker, props, waiter, JsonMapper.builder().build());
@@ -228,12 +230,67 @@ class SessionServiceTest {
 		assertThat(sessions.clearLastEscalatedSignature(s.getId())).isZero();
 	}
 
+	@Test
+	void joinDoesNotOverwriteStateWrittenDuringHealthWait() {
+		// code-server를 기다리는 동안 점검(15초 주기)과 에이전트가 같은 행을 쓴 상황
+		duringHealthWait = port -> {
+			long id = sessions.findAll().stream().filter(x -> port.equals(x.getHostPort())).findFirst().orElseThrow()
+					.getId();
+			sessions.updateCheckState(id, true, true, EnvStatus.MISMATCH, "[{\"type\":\"MISSING\"}]", "[]");
+			sessions.updateEscalation(id, "재점검 실패: MISSING:six", "MISSING:six");
+		};
+
+		StudentSession s = service.join("ABC123", "철수");
+
+		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(fresh.getStartupMillis()).isNotNull();
+		assertThat(fresh.getEnvStatus()).isEqualTo(EnvStatus.MISMATCH);
+		assertThat(fresh.getIssuesJson()).contains("MISSING");
+		assertThat(fresh.isIdeConnected()).isTrue();
+		assertThat(fresh.isNeedsHelp()).isTrue();
+		assertThat(fresh.getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six");
+		assertThat(fresh.getLastEscalatedSignature()).isEqualTo("MISSING:six");
+		assertThat(fresh.getContainerId()).isEqualTo(s.getContainerId());
+		assertThat(fresh.getHostPort()).isEqualTo(s.getHostPort());
+		assertThat(fresh.isContainerRunning()).isTrue();
+	}
+
+	@Test
+	void joinRacingCourseEndRemovesItsOwnContainer() {
+		// 입장 확인(READY) 뒤, 컨테이너를 만드는 사이에 강사가 수업을 종료한 상황
+		docker.onCreate = () -> courses.updateStatusIf(ready.getId(), CourseStatus.READY, CourseStatus.ENDED);
+
+		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class)
+				.hasMessage("종료된 수업입니다");
+
+		String containerId = "c" + docker.specs.get(0).labels().get("swunion.session");
+		assertThat(docker.stopped).containsExactly(containerId);
+		assertThat(docker.removed).containsExactly(containerId);
+		assertThat(docker.removedVolumes).containsExactly(docker.specs.get(0).volumeName());
+		assertThat(sessions.count()).isZero();
+		assertThat(probedPorts).as("종료된 수업의 IDE는 기다리지 않는다").isEmpty();
+	}
+
+	@Test
+	void restartRefusedAfterCourseEnded() {
+		StudentSession s = service.join("ABC123", "철수");
+		courses.updateStatusIf(ready.getId(), CourseStatus.READY, CourseStatus.ENDED);
+		probedPorts.clear();
+
+		assertThat(service.restartContainer(s.getId())).isFalse();
+
+		assertThat(docker.restarted).isEmpty();
+		assertThat(probedPorts).isEmpty();
+	}
+
 	static class FakeDocker implements DockerGateway {
 		final List<ContainerSpec> specs = new ArrayList<>();
 		final Map<String, Integer> ports = new HashMap<>();
 		final List<String> restarted = new ArrayList<>();
 		final List<String> removed = new ArrayList<>();
 		final List<String> removedVolumes = new ArrayList<>();
+		final List<String> stopped = new ArrayList<>();
+		Runnable onCreate = () -> { };
 		boolean failCreate;
 		boolean failHostPort;
 		int nextPort = 40000;
@@ -243,6 +300,7 @@ class SessionServiceTest {
 				throw new DockerOperationException("boom");
 			}
 			specs.add(spec);
+			onCreate.run();
 			String id = "c" + spec.labels().get("swunion.session");
 			ports.put(id, nextPort++);
 			return id;
@@ -267,7 +325,7 @@ class SessionServiceTest {
 		public ExecResult runOnce(String i, List<String> c, Duration t) { throw new UnsupportedOperationException(); }
 		public ExecResult exec(String id, List<String> c, Duration t) { throw new UnsupportedOperationException(); }
 		public ExecResult exec(String id, List<String> c, String w, Duration t) { throw new UnsupportedOperationException(); }
-		public void stop(String id) { }
+		public void stop(String id) { stopped.add(id); }
 		public void removeVolume(String v) { removedVolumes.add(v); }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}

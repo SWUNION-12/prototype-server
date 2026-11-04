@@ -1,5 +1,7 @@
 package com.swunion.lab.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -15,6 +17,9 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
 
+	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+	static final String DEFAULT_PASSWORD = "instructor";
+
 	@Bean
 	PasswordEncoder passwordEncoder() {
 		return PasswordEncoderFactories.createDelegatingPasswordEncoder();
@@ -22,6 +27,10 @@ public class SecurityConfig {
 
 	@Bean
 	UserDetailsService userDetailsService(LabProperties props, PasswordEncoder encoder) {
+		// 학생 컨테이너는 host.docker.internal:8080으로 서버에 닿는다. 기본 비밀번호면 학생이 강사 API를 쓸 수 있다.
+		if (DEFAULT_PASSWORD.equals(props.instructorPassword())) {
+			log.warn("강사 비밀번호가 기본값입니다. 학생에게 IDE를 주기 전에 INSTRUCTOR_PASSWORD를 바꾸세요");
+		}
 		return new InMemoryUserDetailsManager(User.withUsername(props.instructorUsername())
 				.password(encoder.encode(props.instructorPassword()))
 				.roles("INSTRUCTOR")

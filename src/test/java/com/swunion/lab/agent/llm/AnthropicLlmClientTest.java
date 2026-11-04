@@ -37,9 +37,39 @@ class AnthropicLlmClientTest {
 	}
 
 	static AnthropicLlmClient build(RestClient.Builder builder, Map<String, String> env) {
-		LabProperties props = new LabProperties("i", "p", "claude-haiku-5-5", 60, "http://x", "127.0.0.1", Path.of("./data"),
+		return build(builder, env, "claude-haiku-5-5");
+	}
+
+	static AnthropicLlmClient build(RestClient.Builder builder, Map<String, String> env, String model) {
+		LabProperties props = new LabProperties("i", "p", model, 60, "http://x", "127.0.0.1", Path.of("./data"),
 				"b", "c", "swunion-s");
 		return new AnthropicLlmClient(builder.build(), new ApiKeyResolver(env, Path.of("build/no-such.env")), props);
+	}
+
+	private static void expectBody(String model, org.springframework.test.web.client.RequestMatcher matcher) {
+		RestClient.Builder builder = RestClient.builder();
+		MockRestServiceServer s = MockRestServiceServer.bindTo(builder).build();
+		s.expect(requestTo("https://api.anthropic.com/v1/messages")).andExpect(jsonPath("$.model").value(model))
+				.andExpect(matcher)
+				.andRespond(withSuccess("{\"content\":[],\"stop_reason\":\"end_turn\"}", MediaType.APPLICATION_JSON));
+		build(builder, Map.of("ANTHROPIC_API_KEY", KEY), model).send("s", List.of(new UserText("a")), List.of());
+		s.verify();
+	}
+
+	@Test
+	void effortIsSentForClaude5Models() {
+		for (String model : List.of("claude-haiku-5-5", "claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5",
+				"claude-opus-5", "claude-fable-5", "claude-fable-5-1")) {
+			expectBody(model, jsonPath("$.output_config.effort").value("low"));
+		}
+	}
+
+	@Test
+	void effortIsOmittedForModelsOutsideClaude5() {
+		// effort를 모르는 모델(예: claude-haiku-4-5)은 400을 돌려 모든 에이전트 실행이 "LLM 응답 실패"가 된다.
+		for (String model : List.of("claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-8", "my-proxy-model")) {
+			expectBody(model, jsonPath("$.output_config").doesNotExist());
+		}
 	}
 
 	@Test

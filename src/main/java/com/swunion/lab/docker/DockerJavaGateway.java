@@ -73,7 +73,8 @@ public class DockerJavaGateway implements DockerGateway {
 		try {
 			docker.buildImageCmd().withBaseDirectory(contextDir.toFile())
 					.withDockerfile(contextDir.resolve("Dockerfile").toFile()).withTags(Set.of(tag))
-					.withNoCache(false).withRemove(true).exec(callback).awaitCompletion();
+					// withRemove는 성공한 단계의 중간 컨테이너만 지운다. 실패한 RUN 단계의 컨테이너는 forcerm이어야 지워진다.
+					.withNoCache(false).withRemove(true).withForcerm(true).exec(callback).awaitCompletion();
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();

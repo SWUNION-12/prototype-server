@@ -30,7 +30,8 @@ public class AgentTools {
 
 	private static final Logger log = LoggerFactory.getLogger(AgentTools.class);
 
-	static final List<String> RESTORE_CMD = List.of("uv", "sync", "--frozen", "--inexact");
+	// PATH의 첫 항목 /opt/venv/bin은 학생(coder)이 쓸 수 있어 "uv"로 부르면 학생이 둔 uv가 실행될 수 있다. root 소유 절대 경로를 쓴다.
+	static final List<String> RESTORE_CMD = List.of("/usr/local/bin/uv", "sync", "--frozen", "--inexact");
 	static final String SPEC_DIR = "/opt/lab/spec";
 	static final Duration RESTORE_TIMEOUT = Duration.ofSeconds(120);
 	// 시간 초과된 exec는 컨테이너 안에서 계속 돌 수 있어, 겹쳐 돌리지 않도록 실행당 횟수를 묶는다.
@@ -228,7 +229,7 @@ public class AgentTools {
 		boolean healthy = sessions.restartContainer(ctx.session().getId());
 		return healthy
 				? logged(call, state, Map.of(), "컨테이너를 재시작했고 IDE가 응답합니다.", false)
-				: logged(call, state, Map.of(), "컨테이너를 재시작했지만 IDE가 60초 안에 응답하지 않습니다.", true);
+				: logged(call, state, Map.of(), "컨테이너를 재시작하지 못했거나 IDE가 60초 안에 응답하지 않습니다.", true);
 	}
 
 	private ToolResult explain(AgentContext ctx, ToolCall call, RunState state, Map<String, String> args) {

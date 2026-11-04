@@ -1,5 +1,6 @@
 package com.swunion.lab.help;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +23,14 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
 			+ " where h.id = :id")
 	int updateResult(@Param("id") long id, @Param("status") HelpStatus status,
 			@Param("explanation") String explanation, @Param("escalated") boolean escalated);
+
+	/** before보다 먼저 만들어진 from 상태 요청을 to로 닫는다. 서버 재시작 정리용(HelpRecovery). */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update HelpRequest h set h.status = :to, h.explanation = :explanation"
+			+ " where h.status = :from and h.createdAt < :before")
+	int closeStatusBefore(@Param("from") HelpStatus from, @Param("to") HelpStatus to,
+			@Param("explanation") String explanation, @Param("before") Instant before);
 
 	/** 처리 중에 눌러도 남는다. updateResult가 escalated를 내리지 않기 때문이다. */
 	@Transactional

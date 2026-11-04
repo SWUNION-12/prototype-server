@@ -20,6 +20,13 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 	List<Course> findAllByOrderByIdDesc();
 
 	/**
+	 * 영속성 컨텍스트에 남은 엔티티가 아니라 DB의 현재 상태를 읽는다. 수업 종료와 겹친 입장·재시작이
+	 * 요청 초반에 읽어 둔 READY를 믿으면 종료된 수업에 컨테이너가 살아난다.
+	 */
+	@Query("select c.status from Course c where c.id = :id")
+	Optional<CourseStatus> findStatusById(@Param("id") long id);
+
+	/**
 	 * 상태가 from일 때만 to로 바꾼다. 수업 종료가 동시에 진행 중인 발급이나 다른 종료 요청을 덮어쓰지 않게
 	 * 조건과 갱신을 한 문장으로 한다.
 	 * @return 갱신된 행 수(조건이 안 맞으면 0)

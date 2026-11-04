@@ -53,6 +53,19 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Query("update StudentSession s set s.needsHelp = :needsHelp, s.needsHelpReason = :reason where s.id = :id")
 	int updateNeedsHelp(@Param("id") long id, @Param("needsHelp") boolean needsHelp, @Param("reason") String reason);
 
+	/**
+	 * 강사 도움 필요를 켜고 이유를 덧붙인다. 비어 있으면 reason만, 이미 reason이 들어 있거나 덧붙이면 컬럼(4,000자)을
+	 * 넘는 길이(maxKeep 초과)면 그대로 둔다. 읽고 쓰는 사이에 에이전트가 이유를 바꿔도 잃지 않게 한 문장으로 한다.
+	 */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.needsHelp = true, s.needsHelpReason = case"
+			+ " when s.needsHelpReason is null or s.needsHelpReason = '' then :reason"
+			+ " when locate(:reason, s.needsHelpReason) > 0 or length(s.needsHelpReason) > :maxKeep"
+			+ " then s.needsHelpReason"
+			+ " else concat(s.needsHelpReason, ' / ', :reason) end where s.id = :id")
+	int appendNeedsHelpReason(@Param("id") long id, @Param("reason") String reason, @Param("maxKeep") int maxKeep);
+
 	/** 에이전트가 강사에게 넘길 때. 같은 불일치로 다시 호출하지 않도록 서명을 같이 남긴다. */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -71,6 +84,19 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.hostPort = :port, s.containerRunning = :running where s.id = :id")
 	int updateContainerState(@Param("id") long id, @Param("port") int port, @Param("running") boolean running);
+
+	/** join이 컨테이너를 만든 직후. 이때부터 점검이 이 행을 읽고 쓰므로 join도 자기 컬럼만 쓴다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.containerId = :containerId, s.hostPort = :port, s.containerRunning = true"
+			+ " where s.id = :id")
+	int updateContainerCreated(@Param("id") long id, @Param("containerId") String containerId, @Param("port") int port);
+
+	/** code-server 응답을 기다리는 동안(최대 60초) 점검·에이전트가 쓴 값을 덮지 않도록 기동 시간만 쓴다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.startupMillis = :millis where s.id = :id")
+	int updateStartupMillis(@Param("id") long id, @Param("millis") long millis);
 
 	/** 수업 종료 뒤에는 점검이 돌지 않으므로, 멈춘 컨테이너를 대시보드가 실행 중으로 보이지 않게 직접 내린다. */
 	@Transactional

@@ -24,6 +24,10 @@ public class EnvironmentChecker {
 	static final Duration EXEC_TIMEOUT = Duration.ofSeconds(20);
 	// 8080으로 ESTABLISHED인 연결은 전부 "IDE 접속"으로 센다. 서버가 거는 프로브는 짧게 열고 닫아야 한다.
 	static final int IDE_PORT = 8080;
+	// PATH의 첫 항목 /opt/venv/bin은 학생(coder)이 쓸 수 있다. 거기 놓인 uv나 cat이 점검 결과를 속이지 못하게
+	// 이미지가 root 소유로 넣은 절대 경로로 부른다.
+	static final String UV = "/usr/local/bin/uv";
+	static final String CAT = "/bin/cat";
 
 	private final DockerGateway docker;
 	private final CourseService courses;
@@ -93,7 +97,7 @@ public class EnvironmentChecker {
 
 	private Map<String, String> installed(long sid, String id) {
 		try {
-			ExecResult r = docker.exec(id, List.of("uv", "pip", "list", "--python", "/opt/venv/bin/python",
+			ExecResult r = docker.exec(id, List.of(UV, "pip", "list", "--python", "/opt/venv/bin/python",
 					"--format", "json"), EXEC_TIMEOUT);
 			if (r.exitCode() != 0) {
 				log.warn("점검 실패 session={} cmd=uv-pip-list exit={}", sid, r.exitCode());
@@ -116,7 +120,7 @@ public class EnvironmentChecker {
 	private int ideConnections(long sid, String id) {
 		try {
 			// tcp6가 없으면 비정상 종료할 수 있지만 stdout에 나온 만큼은 센다.
-			ExecResult r = docker.exec(id, List.of("cat", "/proc/net/tcp", "/proc/net/tcp6"), EXEC_TIMEOUT);
+			ExecResult r = docker.exec(id, List.of(CAT, "/proc/net/tcp", "/proc/net/tcp6"), EXEC_TIMEOUT);
 			return TcpConnections.countEstablished(r.stdout(), IDE_PORT);
 		}
 		catch (RuntimeException e) {

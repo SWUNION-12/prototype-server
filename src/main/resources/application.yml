@@ -11,7 +11,10 @@ spring:
 
 lab:
   instructor-username: ${INSTRUCTOR_USERNAME:instructor}
+  # 기본값이면 시작할 때 WARN을 남긴다. 학생 컨테이너가 이 서버의 강사 API에 닿으므로 학생에게 IDE를 주기 전에 바꾼다.
   instructor-password: ${INSTRUCTOR_PASSWORD:instructor}
+  # output_config.effort(low)는 Claude 5 계열(claude-haiku-5, claude-sonnet-5, claude-opus-5, claude-fable-5로 시작하는 id)에만 보낸다.
+  # 다른 모델로 바꾸면 effort 없이 모델 기본값으로 호출한다. effort를 모르는 모델에 보내면 모든 호출이 400이 된다.
   llm-model: ${LLM_MODEL:claude-haiku-5-5}
   check-interval-seconds: ${CHECK_INTERVAL_SECONDS:15}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
