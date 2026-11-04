@@ -41,7 +41,7 @@ class EnvironmentCheckerTest {
 	@BeforeEach
 	void setUp() {
 		JsonMapper json = JsonMapper.builder().build();
-		CourseService cs = new CourseService(courses, null, null, json);
+		CourseService cs = new CourseService(courses, null, null, json, null, null);
 		checker = new EnvironmentChecker(docker, cs, sessions, checks, json);
 		course = new Course("수업", "3.12", "six==1.16.0");
 		course.setStatus(CourseStatus.READY);

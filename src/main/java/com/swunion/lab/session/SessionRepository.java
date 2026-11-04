@@ -16,6 +16,12 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 
 	List<StudentSession> findByCourse_StatusAndContainerIdIsNotNull(CourseStatus status);
 
+	/** 강사 대시보드가 수업의 학생을 한 번에 읽는다. */
+	List<StudentSession> findByCourse_Id(long courseId);
+
+	/** 수업 종료가 멈출 컨테이너를 찾는다. */
+	List<StudentSession> findByCourse_IdAndContainerIdIsNotNull(long courseId);
+
 	/**
 	 * 점검이 소유한 컬럼만 쓴다. 엔티티 전체를 save하면 동시에 바뀐 needsHelp 같은 값을 덮어쓴다.
 	 * @return 갱신된 행 수(세션이 지워졌으면 0)
@@ -65,4 +71,10 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.hostPort = :port, s.containerRunning = :running where s.id = :id")
 	int updateContainerState(@Param("id") long id, @Param("port") int port, @Param("running") boolean running);
+
+	/** 수업 종료 뒤에는 점검이 돌지 않으므로, 멈춘 컨테이너를 대시보드가 실행 중으로 보이지 않게 직접 내린다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.containerRunning = false, s.ideConnected = false where s.id = :id")
+	int markStopped(@Param("id") long id);
 }

@@ -44,9 +44,28 @@ public class CourseController {
 		return c == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(view(c));
 	}
 
+	/** 컨테이너만 멈춘다. 볼륨은 남는다. */
+	@PostMapping("/{id}/end")
+	ResponseEntity<Map<String, Object>> end(@PathVariable long id) {
+		CourseService.EndResult r = service.end(id);
+		if (r == null) {
+			return ResponseEntity.notFound().build();
+		}
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("status", CourseStatus.ENDED);
+		m.put("stopped", r.stopped());
+		m.put("failed", r.failed());
+		return ResponseEntity.ok(m);
+	}
+
 	@ExceptionHandler(InvalidSpecException.class)
 	ResponseEntity<Map<String, String>> invalid(InvalidSpecException e) {
 		return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+	}
+
+	@ExceptionHandler(CourseStateException.class)
+	ResponseEntity<Map<String, String>> conflict(CourseStateException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
 	}
 
 	// 파일 경로(작업 폴더, 이미지 이름 등)는 응답에 싣지 않는다.
