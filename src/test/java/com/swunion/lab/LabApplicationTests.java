@@ -31,6 +31,6 @@ class LabApplicationTests {
 		assertThat(props.ideBindAddress()).isEqualTo("127.0.0.1");
 		// Spring의 Path 변환이 "./data"를 "data"로 정규화하므로 정규화한 값끼리 비교한다.
 		assertThat(props.dataDir().normalize()).isEqualTo(Path.of("data"));
-		assertThat(props.baseImage()).isEqualTo("swunion/lab-base:1");
+		assertThat(props.baseImage()).isEqualTo("swunion/lab-base:2");
 	}
 }

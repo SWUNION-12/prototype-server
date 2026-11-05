@@ -29,4 +29,13 @@ USER coder
 RUN code-server --install-extension ms-python.python \
     || echo "WARN: ms-python.python install failed"
 
+# 실습 도우미 확장. 빌드 단계 없는 소스를 vsix(zip)로 묶어 설치한다. 묶을 때는 code-server에 든 node를 쓰므로
+# 네트워크가 필요 없다. ms-python 설치 뒤에 두어 확장만 바뀌면 이 아래 층만 다시 만든다. 설치에 실패하면 빌드를 멈춘다.
+COPY --chown=coder:coder extension/ /tmp/swunion-extension/
+RUN /usr/lib/code-server/lib/node /tmp/swunion-extension/pack-vsix.js \
+        /tmp/swunion-extension/swunion-helper /tmp/swunion-helper.vsix \
+    && code-server --install-extension /tmp/swunion-helper.vsix \
+    && code-server --list-extensions | grep -qx 'swunion.swunion-helper' \
+    && rm -rf /tmp/swunion-extension /tmp/swunion-helper.vsix
+
 CMD ["--bind-addr","0.0.0.0:8080","--auth","password","--disable-telemetry","--disable-update-check","/home/coder/project"]

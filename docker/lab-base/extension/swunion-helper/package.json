@@ -1,0 +1,74 @@
+{
+  "name": "swunion-helper",
+  "displayName": "실습 도우미",
+  "description": "실습 환경 상태를 보고, 수업 서버에 도움을 요청하고, 강사를 부르는 패널",
+  "version": "0.1.0",
+  "publisher": "swunion",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "activationEvents": [
+    "onView:swunionHelper.panel",
+    "onCommand:swunionHelper.sendSelection"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "swunionHelper",
+          "title": "실습 도우미",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "swunionHelper": [
+        {
+          "type": "webview",
+          "id": "swunionHelper.panel",
+          "name": "실습 도우미",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "swunionHelper.sendSelection",
+        "title": "실습 도우미: 선택한 내용으로 도움 요청"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "swunionHelper.sendSelection",
+          "when": "editorHasSelection",
+          "group": "9_swunionHelper"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "swunionHelper.sendSelection",
+          "when": "terminalTextSelected",
+          "group": "9_swunionHelper"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}
