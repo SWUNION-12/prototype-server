@@ -66,6 +66,14 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 			+ " else concat(s.needsHelpReason, ' / ', :reason) end where s.id = :id")
 	int appendNeedsHelpReason(@Param("id") long id, @Param("reason") String reason, @Param("maxKeep") int maxKeep);
 
+	/** StudentSession.needsHelpReason 컬럼 길이 */
+	int NEEDS_HELP_REASON_LENGTH = 4000;
+
+	/** appendNeedsHelpReason에 컬럼 길이에서 구분자(" / ")와 새 이유 길이를 뺀 maxKeep을 계산해 넘긴다. */
+	default int addNeedsHelpReason(long id, String reason) {
+		return appendNeedsHelpReason(id, reason, NEEDS_HELP_REASON_LENGTH - " / ".length() - reason.length());
+	}
+
 	/** 에이전트가 강사에게 넘길 때. 같은 불일치로 다시 호출하지 않도록 서명을 같이 남긴다. */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -104,9 +112,14 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Query("update StudentSession s set s.containerRunning = false, s.ideConnected = false where s.id = :id")
 	int markStopped(@Param("id") long id);
 
-	/** 볼륨이 사라져 빈 볼륨으로 다시 만든 시각. 학생 화면과 강사 대시보드가 이 값으로 유실을 안다. */
+	/**
+	 * 볼륨이 사라진 것을 처음 알았을 때만 시각을 기록한다. 학생 화면과 강사 대시보드가 이 값으로 유실을 안다.
+	 * 이미 기록됐으면 0행이다. 호출자는 이 값이 1일 때만 강사 도움 필요 이유를 덧붙여, 같은 유실이 다시 확인돼도
+	 * 강사가 이미 치운 표시가 되살아나지 않게 한다.
+	 * @return 새로 기록했으면 1, 이미 기록돼 있거나 세션이 없으면 0
+	 */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update StudentSession s set s.workspaceLostAt = :at where s.id = :id")
+	@Query("update StudentSession s set s.workspaceLostAt = :at where s.id = :id and s.workspaceLostAt is null")
 	int markWorkspaceLost(@Param("id") long id, @Param("at") Instant at);
 }

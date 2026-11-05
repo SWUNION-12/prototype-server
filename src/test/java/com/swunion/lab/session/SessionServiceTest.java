@@ -317,6 +317,8 @@ class SessionServiceTest {
 	/**
 	 * containerExists/volumeExists는 예외를 던지지 않고 설정한 답을 돌려주며 부른 이름을 기록한다.
 	 * 던지게 두면 서비스의 catch(RuntimeException)이 삼켜 테스트가 아무것도 확인하지 못한 채 통과할 수 있다.
+	 * Docker처럼 createAndStart가 없는 이름 붙은 볼륨을 빈 채로 만들므로, 그 뒤 volumeExists는 true가 된다.
+	 * callLog는 모든 호출을 순서대로 남겨 "확인이 만들기보다 먼저인가"를 검증하게 한다.
 	 */
 	static class FakeDocker implements DockerGateway {
 		final List<ContainerSpec> specs = new ArrayList<>();
@@ -328,6 +330,10 @@ class SessionServiceTest {
 		final List<String> runningChecks = new ArrayList<>();
 		final List<String> containerExistsCalls = new ArrayList<>();
 		final List<String> volumeExistsCalls = new ArrayList<>();
+		/** 모든 게이트웨이 호출을 "메서드:인자" 형태로 순서대로 남긴다. */
+		final List<String> callLog = new ArrayList<>();
+		/** createAndStart가 만든 볼륨. 처음부터 있던 볼륨은 volumeExistsAnswer로 정한다. */
+		final java.util.Set<String> createdVolumes = new java.util.HashSet<>();
 		Runnable onCreate = () -> { };
 		Runnable onRestart = () -> { };
 		boolean running = true;
@@ -336,6 +342,8 @@ class SessionServiceTest {
 		RuntimeException runningFailure;
 		RuntimeException restartFailure;
 		RuntimeException createFailure;
+		/** createFailure가 컨테이너 생성 뒤 시작 단계에서 난 실패를 흉내 낸다: Docker가 빈 볼륨을 이미 만들어 둔 상태. */
+		boolean createFailureLeavesVolume;
 		boolean failCreate;
 		boolean failHostPort;
 		int nextPort = 40000;
@@ -349,18 +357,22 @@ class SessionServiceTest {
 
 		/** 어떤 종류든 게이트웨이를 한 번이라도 불렀는가. */
 		boolean touched() {
-			return mutationCount() > 0 || !runningChecks.isEmpty() || !containerExistsCalls.isEmpty()
-					|| !volumeExistsCalls.isEmpty();
+			return !callLog.isEmpty();
 		}
 
 		public String createAndStart(ContainerSpec spec) {
 			createCalls++;
+			callLog.add("createAndStart:" + spec.volumeName());
 			if (createFailure != null) {
+				if (createFailureLeavesVolume) {
+					createdVolumes.add(spec.volumeName());
+				}
 				throw createFailure;
 			}
 			if (failCreate) {
 				throw new DockerOperationException("boom");
 			}
+			createdVolumes.add(spec.volumeName());
 			specs.add(spec);
 			onCreate.run();
 			String id = "c" + spec.labels().get("swunion.session");
@@ -369,6 +381,7 @@ class SessionServiceTest {
 		}
 
 		public int hostPort(String id, int containerPort) {
+			callLog.add("hostPort:" + id);
 			if (failHostPort) {
 				throw new DockerOperationException("no port");
 			}
@@ -376,6 +389,7 @@ class SessionServiceTest {
 		}
 
 		public void restart(String id) {
+			callLog.add("restart:" + id);
 			restarted.add(id);
 			if (restartFailure != null) {
 				throw restartFailure;
@@ -383,6 +397,7 @@ class SessionServiceTest {
 			onRestart.run();
 		}
 		public boolean isRunning(String id) {
+			callLog.add("isRunning:" + id);
 			runningChecks.add(id);
 			if (runningFailure != null) {
 				throw runningFailure;
@@ -390,21 +405,23 @@ class SessionServiceTest {
 			return running;
 		}
 		public boolean containerExists(String id) {
+			callLog.add("containerExists:" + id);
 			containerExistsCalls.add(id);
 			return containerExistsAnswer;
 		}
 		public boolean volumeExists(String v) {
+			callLog.add("volumeExists:" + v);
 			volumeExistsCalls.add(v);
-			return volumeExistsAnswer;
+			return createdVolumes.contains(v) || volumeExistsAnswer;
 		}
-		public void remove(String id) { removed.add(id); }
+		public void remove(String id) { callLog.add("remove:" + id); removed.add(id); }
 		public boolean imageExists(String image) { return true; }
 		public String buildImage(Path d, String t, Consumer<String> l) { throw new UnsupportedOperationException(); }
 		public ExecResult runOnce(String i, List<String> c, Duration t) { throw new UnsupportedOperationException(); }
 		public ExecResult exec(String id, List<String> c, Duration t) { throw new UnsupportedOperationException(); }
 		public ExecResult exec(String id, List<String> c, String w, Duration t) { throw new UnsupportedOperationException(); }
-		public void stop(String id) { stopped.add(id); }
-		public void removeVolume(String v) { removedVolumes.add(v); }
+		public void stop(String id) { callLog.add("stop:" + id); stopped.add(id); }
+		public void removeVolume(String v) { callLog.add("removeVolume:" + v); removedVolumes.add(v); }
 		public void removeImage(String image) { }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}

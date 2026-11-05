@@ -2,6 +2,12 @@ package com.swunion.lab.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
 import com.swunion.lab.config.LabProperties;
 import com.swunion.lab.course.Course;
@@ -37,6 +43,7 @@ class ContainerEnsurerTest {
 	CourseRepository courses;
 
 	FakeDocker docker = new FakeDocker();
+	ContainerSpecs specs;
 	ContainerEnsurer ensurer;
 	Course course;
 	StudentSession session;
@@ -45,8 +52,8 @@ class ContainerEnsurerTest {
 	void setUp() {
 		var props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
 				"b:1", "t/course-", "swunion-test-s");
-		ensurer = new ContainerEnsurer(sessions, docker, new ContainerSpecs(props),
-				Clock.fixed(NOW, ZoneOffset.UTC));
+		specs = new ContainerSpecs(props);
+		ensurer = ensurerOn(sessions);
 		Course c = new Course("수업", "3.12", "six==1.16.0");
 		c.setStatus(CourseStatus.READY);
 		c.setEntryCode("ENS001");
@@ -62,8 +69,33 @@ class ContainerEnsurerTest {
 		docker.ports.put(OLD_CONTAINER, 41000);
 	}
 
+	private ContainerEnsurer ensurerOn(SessionRepository repository) {
+		return ensurerAt(repository, NOW);
+	}
+
+	private ContainerEnsurer ensurerAt(SessionRepository repository, Instant now) {
+		return new ContainerEnsurer(repository, docker, specs, Clock.fixed(now, ZoneOffset.UTC));
+	}
+
+	/** 실제 저장소에 위임하되 일부 호출만 DB 오류로 바꿀 수 있는 저장소. */
+	private SessionRepository repositoryThatCanFail() {
+		return mock(SessionRepository.class, delegatesTo(sessions));
+	}
+
 	private StudentSession fresh() {
 		return sessions.findById(session.getId()).orElseThrow();
+	}
+
+	/**
+	 * createAndStart는 없는 볼륨을 빈 채로 만든다(가짜도 그렇게 동작한다). 확인이 만들기 뒤로 가면 항상 "있음"이
+	 * 되어 유실을 못 보므로, 확인이 먼저인 순서 자체를 고정한다.
+	 */
+	private void assertVolumeCheckedBeforeCreate() {
+		int check = docker.callLog.indexOf("volumeExists:" + VOLUME);
+		int create = docker.callLog.indexOf("createAndStart:" + VOLUME);
+		assertThat(check).as("volumeExists를 불렀다: %s", docker.callLog).isGreaterThanOrEqualTo(0);
+		assertThat(create).as("createAndStart를 불렀다: %s", docker.callLog).isGreaterThanOrEqualTo(0);
+		assertThat(check).as("volumeExists가 createAndStart보다 먼저: %s", docker.callLog).isLessThan(create);
 	}
 
 	@Test
@@ -124,6 +156,7 @@ class ContainerEnsurerTest {
 		assertThat(r.outcome()).isEqualTo(EnsureOutcome.RECREATED);
 		assertThat(docker.containerExistsCalls).containsExactly(OLD_CONTAINER);
 		assertThat(docker.volumeExistsCalls).containsExactly(VOLUME);
+		assertVolumeCheckedBeforeCreate();
 		assertThat(docker.specs).hasSize(1);
 		ContainerSpec spec = docker.specs.get(0);
 		// join과 같은 이름·볼륨·라벨·환경이어야 점검과 정리가 이 컨테이너를 같은 학생 것으로 안다.
@@ -163,6 +196,7 @@ class ContainerEnsurerTest {
 
 		assertThat(r.outcome()).isEqualTo(EnsureOutcome.RECREATED_EMPTY);
 		assertThat(docker.volumeExistsCalls).containsExactly(VOLUME);
+		assertVolumeCheckedBeforeCreate();
 		assertThat(docker.specs).hasSize(1);
 		assertThat(docker.specs.get(0).volumeName()).isEqualTo(VOLUME);
 		StudentSession s = fresh();
@@ -236,7 +270,7 @@ class ContainerEnsurerTest {
 	}
 
 	@Test
-	void recreateWithoutHostPortRemovesTheContainerItJustMadeById() {
+	void recreateWithoutHostPortRemovesTheContainerAndStillRecordsTheWorkspaceLoss() {
 		docker.running = false;
 		docker.containerExistsAnswer = false;
 		docker.volumeExistsAnswer = false;
@@ -250,9 +284,135 @@ class ContainerEnsurerTest {
 		assertThat(docker.removedVolumes).as("볼륨은 학생 코드라 지우지 않는다").isEmpty();
 		StudentSession s = fresh();
 		assertThat(s.getContainerId()).isEqualTo(OLD_CONTAINER);
-		// 기록이 바뀌지 않았으니 유실도 기록하지 않는다. 다음 시도가 다시 판단한다.
-		assertThat(s.getWorkspaceLostAt()).isNull();
-		assertThat(s.isNeedsHelp()).isFalse();
+		// createAndStart가 빈 볼륨을 이미 만들었다. 다음 시도는 볼륨이 있다고 보므로 유실은 지금 기록해야 한다.
+		assertThat(s.getWorkspaceLostAt()).isEqualTo(NOW);
+		assertThat(s.isNeedsHelp()).isTrue();
+		assertThat(s.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+
+		// 다음 시도는 (빈) 볼륨이 있어 RECREATED로 보이지만 앞서 기록한 유실은 남아 있다.
+		docker.failHostPort = false;
+		EnsureResult retry = ensurer.ensureRunning(session);
+
+		assertThat(retry.outcome()).isEqualTo(EnsureOutcome.RECREATED);
+		StudentSession again = fresh();
+		assertThat(again.getWorkspaceLostAt()).isEqualTo(NOW);
+		assertThat(again.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+		assertThat(again.getContainerId()).isEqualTo("c" + session.getId());
+	}
+
+	@Test
+	void failureRecordingTheContainerRemovesItAndStillRecordsTheWorkspaceLoss() {
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		SessionRepository failing = repositoryThatCanFail();
+		doThrow(new IllegalStateException("db down")).when(failing).updateContainerCreated(anyLong(), any(), anyInt());
+
+		EnsureResult r = ensurerOn(failing).ensureRunning(session);
+
+		assertThat(r.outcome()).isEqualTo(EnsureOutcome.FAILED);
+		assertThat(docker.createCalls).isEqualTo(1);
+		// 기록되지 않은 채 같은 이름으로 돌고 있으면 다음 시도가 이름 충돌로 막힌다.
+		assertThat(docker.removed).containsExactly("c" + session.getId());
+		StudentSession s = fresh();
+		assertThat(s.getContainerId()).isEqualTo(OLD_CONTAINER);
+		assertThat(s.getWorkspaceLostAt()).isEqualTo(NOW);
+		assertThat(s.isNeedsHelp()).isTrue();
+		assertThat(s.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+		// 유실을 기록한 시도의 컨테이너 기록이 실패했을 뿐이므로 다음 시도에서 유실이 사라지지 않는다.
+		EnsureResult retry = ensurer.ensureRunning(session);
+		assertThat(retry.outcome()).isEqualTo(EnsureOutcome.RECREATED);
+		assertThat(fresh().getWorkspaceLostAt()).isEqualTo(NOW);
+	}
+
+	@Test
+	void failureRecordingTheLossCreatesNoContainer() {
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		SessionRepository failing = repositoryThatCanFail();
+		doThrow(new IllegalStateException("db down")).when(failing).markWorkspaceLost(anyLong(), any());
+
+		EnsureResult r = ensurerOn(failing).ensureRunning(session);
+
+		// 유실을 기록하지 못하면 빈 볼륨을 만들어 버리지 않는다. 만들면 다음 시도가 유실을 영영 알 수 없다.
+		assertThat(r.outcome()).isEqualTo(EnsureOutcome.FAILED);
+		assertThat(docker.volumeExistsCalls).containsExactly(VOLUME);
+		assertThat(docker.createCalls).isZero();
+		assertThat(docker.removed).isEmpty();
+		assertThat(fresh().getContainerId()).isEqualTo(OLD_CONTAINER);
+	}
+
+	@Test
+	void volumeMissingAndStartFailsStillRecordsTheLossOnce() {
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		// 컨테이너가 만들어지면서 Docker가 빈 볼륨을 만들고, 시작에서 실패해 게이트웨이가 컨테이너를 치운 상태
+		docker.createFailure = new IllegalStateException("start failed");
+		docker.createFailureLeavesVolume = true;
+
+		EnsureResult r = ensurer.ensureRunning(session);
+
+		assertThat(r.outcome()).isEqualTo(EnsureOutcome.FAILED);
+		assertThat(docker.createCalls).as("만들기를 실제로 시도했다").isEqualTo(1);
+		assertThat(docker.removed).as("만들어진 컨테이너가 없으므로 지울 것도 없다").isEmpty();
+		assertThat(docker.removedVolumes).isEmpty();
+		StudentSession s = fresh();
+		assertThat(s.getContainerId()).isEqualTo(OLD_CONTAINER);
+		assertThat(s.getWorkspaceLostAt()).isEqualTo(NOW);
+		assertThat(s.isNeedsHelp()).isTrue();
+		assertThat(s.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+
+		// 다음 시도: 빈 볼륨이 이제 있어 RECREATED로 보이지만 유실은 처음 기록한 그대로이고 이유는 한 번만 있다.
+		docker.createFailure = null;
+		EnsureResult retry = ensurerAt(sessions, NOW.plusSeconds(60)).ensureRunning(session);
+
+		assertThat(retry.outcome()).isEqualTo(EnsureOutcome.RECREATED);
+		StudentSession again = fresh();
+		assertThat(again.getWorkspaceLostAt()).as("처음 기록한 시각을 유지한다").isEqualTo(NOW);
+		assertThat(again.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+		assertThat(again.getContainerId()).isEqualTo("c" + session.getId());
+	}
+
+	@Test
+	void retryAfterFailedRecreateKeepsTheFirstLossRecord() {
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		docker.createFailure = new IllegalStateException("name conflict");
+
+		assertThat(ensurer.ensureRunning(session).outcome()).isEqualTo(EnsureOutcome.FAILED);
+		// 이름 충돌로 볼륨은 아직 만들어지지 않았다. 다시 시도해도 볼륨이 없다.
+		docker.createFailure = null;
+		EnsureResult retry = ensurerAt(sessions, NOW.plusSeconds(60)).ensureRunning(session);
+
+		assertThat(retry.outcome()).isEqualTo(EnsureOutcome.RECREATED_EMPTY);
+		assertThat(docker.volumeExistsCalls).containsExactly(VOLUME, VOLUME);
+		StudentSession s = fresh();
+		assertThat(s.getNeedsHelpReason()).isEqualTo("작업 공간 유실");
+		assertThat(s.getWorkspaceLostAt()).isEqualTo(NOW);
+	}
+
+	@Test
+	void instructorClearingTheFlagIsNotUndoneByALaterAttempt() {
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		docker.createFailure = new IllegalStateException("name conflict");
+		ensurer.ensureRunning(session);
+		assertThat(fresh().isNeedsHelp()).isTrue();
+		// 강사가 확인하고 표시를 지웠다
+		sessions.updateNeedsHelp(session.getId(), false, null);
+
+		docker.createFailure = null;
+		EnsureResult retry = ensurerAt(sessions, NOW.plusSeconds(60)).ensureRunning(session);
+
+		assertThat(retry.outcome()).isEqualTo(EnsureOutcome.RECREATED_EMPTY);
+		StudentSession s = fresh();
+		assertThat(s.isNeedsHelp()).as("이미 기록된 유실은 강사 표시를 다시 켜지 않는다").isFalse();
+		assertThat(s.getNeedsHelpReason()).isNull();
+		assertThat(s.getWorkspaceLostAt()).isEqualTo(NOW);
 	}
 
 	@Test

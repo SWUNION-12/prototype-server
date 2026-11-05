@@ -22,8 +22,6 @@ public class SessionService {
 
 	private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 	static final Duration HEALTH_TIMEOUT = Duration.ofSeconds(60);
-	// StudentSession.needsHelpReason 컬럼 길이
-	static final int MAX_REASON = 4000;
 	// 0/O, 1/l/I처럼 헷갈리는 글자를 뺀 집합. 학생이 손으로 입력할 수 있다.
 	private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
@@ -158,7 +156,7 @@ public class SessionService {
 
 	/** 이미 있는 이유(예: 에이전트의 "재점검 실패: …")는 지우지 않고 " / reason"으로 덧붙인다. */
 	public void addNeedsHelpReason(long sessionId, String reason) {
-		sessions.appendNeedsHelpReason(sessionId, reason, MAX_REASON - " / ".length() - reason.length());
+		sessions.addNeedsHelpReason(sessionId, reason);
 	}
 
 	public void clearNeedsHelp(long sessionId) {

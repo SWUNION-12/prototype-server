@@ -1,6 +1,5 @@
 package com.swunion.lab.session;
 
-import com.swunion.lab.course.Course;
 import com.swunion.lab.docker.ContainerSpec;
 import com.swunion.lab.docker.DockerGateway;
 import java.time.Clock;
@@ -90,35 +89,41 @@ public class ContainerEnsurer {
 			log.warn("세션 {}: 볼륨 이름이 없어 컨테이너를 다시 만들 수 없습니다.", sid);
 			return FAILED;
 		}
-		// createAndStart가 없는 볼륨을 빈 채로 만들어 버리므로 만들기 전에 확인한다.
+		// createAndStart가 없는 볼륨을 빈 채로 만들어 버리므로 만들기 전에 확인한다. 만든 뒤에는 볼륨이 있다고 나온다.
 		boolean workspaceLost = !docker.volumeExists(volumeName);
-		Course course = s.getCourse();
+		if (workspaceLost) {
+			// 유실은 볼륨에 대한 사실이라 컨테이너를 만들었는지와 무관하다. 만들다 실패해도(빈 볼륨만 남을 수 있다)
+			// 다음 시도는 볼륨이 있다고 보므로, 모르게 되기 전에 지금 기록한다.
+			recordWorkspaceLoss(sid, volumeName);
+		}
 		// 옛 컨테이너는 이미 없으므로 같은 이름을 다시 쓴다. 이름이 아직 충돌하면 createAndStart가 던지고
 		// 아래가 FAILED로 돌려준다. 이름으로 지우는 일은 하지 않는다.
-		ContainerSpec spec = specs.forSession(s, course);
+		ContainerSpec spec = specs.forSession(s, s.getCourse());
+		// 시작 단계에서 실패하면 게이트웨이가 자기 컨테이너를 지우고 던지므로 여기서 치울 컨테이너가 없다.
 		String newId = docker.createAndStart(spec);
-		int port;
 		try {
-			port = docker.hostPort(newId, ContainerSpecs.IDE_PORT);
+			int port = docker.hostPort(newId, ContainerSpecs.IDE_PORT);
+			if (sessions.updateContainerCreated(sid, newId, port) == 0) {
+				// 만드는 사이에 세션이 지워졌다. 기록할 곳이 없는 컨테이너를 남기지 않는다.
+				removeOwnContainer(sid, newId);
+				log.warn("세션 {}: 컨테이너를 만드는 사이 세션이 지워졌습니다.", sid);
+				return FAILED;
+			}
+			return new EnsureResult(workspaceLost ? EnsureOutcome.RECREATED_EMPTY : EnsureOutcome.RECREATED, port);
 		}
 		catch (RuntimeException e) {
+			// 기록되지 않은 컨테이너가 같은 이름으로 돌고 있으면 다음 시도가 이름 충돌로 계속 실패한다.
 			removeOwnContainer(sid, newId);
 			throw e;
 		}
-		if (sessions.updateContainerCreated(sid, newId, port) == 0) {
-			// 만드는 사이에 세션이 지워졌다. 기록할 곳이 없는 컨테이너를 남기지 않는다.
-			removeOwnContainer(sid, newId);
-			log.warn("세션 {}: 컨테이너를 만드는 사이 세션이 지워졌습니다.", sid);
-			return FAILED;
+	}
+
+	// 처음 기록할 때만 강사 도움 필요 이유를 덧붙인다. 같은 유실이 다시 확인돼도 강사가 치운 표시를 되살리지 않는다.
+	private void recordWorkspaceLoss(long sid, String volumeName) {
+		if (sessions.markWorkspaceLost(sid, clock.instant()) > 0) {
+			log.warn("세션 {}: 볼륨 {}이(가) 없습니다. 빈 작업 공간으로 컨테이너를 만듭니다.", sid, volumeName);
+			sessions.addNeedsHelpReason(sid, WORKSPACE_LOST_REASON);
 		}
-		if (!workspaceLost) {
-			return new EnsureResult(EnsureOutcome.RECREATED, port);
-		}
-		log.warn("세션 {}: 볼륨 {}이(가) 없어 빈 작업 공간으로 컨테이너를 만들었습니다.", sid, volumeName);
-		sessions.markWorkspaceLost(sid, clock.instant());
-		sessions.appendNeedsHelpReason(sid, WORKSPACE_LOST_REASON,
-				SessionService.MAX_REASON - " / ".length() - WORKSPACE_LOST_REASON.length());
-		return new EnsureResult(EnsureOutcome.RECREATED_EMPTY, port);
 	}
 
 	/** 이번 호출이 만든 컨테이너를 id로만 지운다. 볼륨은 학생 코드일 수 있어 건드리지 않는다. */
