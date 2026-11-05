@@ -195,7 +195,8 @@ function CourseEntry() {
       </VStack>
     );
   }
-  return <CourseView courseId={courseId} tab={params.get("tab") === "settings" ? "settings" : "students"} />;
+  // key: 다른 수업으로 바뀌면 삭제 결과 같은 화면 상태를 이어받지 않도록 새로 만든다.
+  return <CourseView key={courseId} courseId={courseId} tab={params.get("tab") === "settings" ? "settings" : "students"} />;
 }
 
 export default function CoursePage() {
