@@ -144,7 +144,7 @@ sg docker -c "docker exec -u coder $C curl -s -m 4 -o /dev/null -w '%{http_code}
   sudo systemctl reload caddy
   ```
 
-  `/ide/*`의 쿠키 제거는 Caddy 버전에 따라 다르게 읽힐 수 있다. `caddy version`을 확인하고, `caddy adapt --config /etc/caddy/Caddyfile`의 `reverse_proxy` 아래 `headers.request.replace.Cookie`에 `JSESSIONID`용과 `XSRF-TOKEN`용 `search_regexp`가 두 개 들어 있는지 본다. 7번 확인 절의 쿠키 항목으로 실제 요청도 확인한다.
+  `/ide/*`의 쿠키 제거는 Caddy 버전에 따라 다르게 읽힐 수 있다. 바꿀 값을 빈 문자열로 쓰면 Ubuntu 패키지의 Caddy 2.6.2는 치환 대신 `set`으로 읽어 학생 IDE 로그인이 풀린다. 그래서 규칙은 빈 값 대신 `swunion-stripped=1`로 바꾼다. `caddy version`을 확인하고, `caddy adapt --config /etc/caddy/Caddyfile`의 `reverse_proxy` 아래 `headers.request.replace.Cookie`에 `JSESSIONID`용과 `XSRF-TOKEN`용 `search_regexp`가 두 개 들어 있는지 본다. 7번 확인 절의 쿠키 항목으로 실제 요청도 확인한다.
 - `docker/lab-base`가 바뀌었으면: 폴더를 올리고 4번처럼 기본 이미지를 다시 빌드한다. 수업 이미지는 수업을 만들 때 굳어지므로, 새로 만드는 수업부터 적용된다.
 
 ## 서버 비우기

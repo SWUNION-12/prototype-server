@@ -8,10 +8,11 @@ your-name.duckdns.org {
 		uri strip_prefix /ide/{re.ide.1}
 		reverse_proxy 127.0.0.1:{re.ide.1} {
 			# IDE는 강사 화면과 같은 출처라 브라우저가 이 앱의 쿠키(강사 세션 JSESSIONID, CSRF XSRF-TOKEN)를 학생 컨테이너에도
-			# 보낸다. 그 둘만 떼고 나머지(code-server-session 등)는 그대로 넘긴다. 첫 번째 줄은 중간·끝 쿠키를,
-			# 두 번째 줄은 맨 앞 쿠키를 지운 뒤 남는 "; "를 정리한다.
-			header_up Cookie "(^|;\s*)(JSESSIONID|XSRF-TOKEN)=[^;]*" ""
-			header_up Cookie "^;\s*" ""
+			# 보낸다. 그 둘을 의미 없는 swunion-stripped=1로 바꾸고 나머지(code-server-session 등)는 그대로 넘긴다.
+			# 첫 줄은 중간·끝 쿠키, 둘째 줄은 맨 앞 쿠키를 맡는다. 바꿀 값을 빈 문자열로 두면 Ubuntu 패키지의
+			# Caddy 2.6.2가 치환이 아니라 Cookie 헤더 전체 덮어쓰기로 읽어 code-server 로그인이 풀리므로 비워 두지 않는다.
+			header_up Cookie ";\s*(JSESSIONID|XSRF-TOKEN)=[^;]*" "; swunion-stripped=1"
+			header_up Cookie "^(JSESSIONID|XSRF-TOKEN)=[^;]*" "swunion-stripped=1"
 		}
 	}
 	handle {
