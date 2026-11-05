@@ -1,5 +1,6 @@
 package com.swunion.lab.help;
 
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.session.StudentSession;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,6 +29,9 @@ public class HelpRequest {
 	@Column(length = 4000)
 	private String explanation;
 	private boolean escalated;
+	// ddl-auto: update로 붙는 열이라 기존 행은 null이다.
+	@Enumerated(EnumType.STRING)
+	private Classification classification;
 	private Instant createdAt = Instant.now();
 
 	protected HelpRequest() {
@@ -46,5 +50,6 @@ public class HelpRequest {
 	public HelpStatus getStatus() { return status; }
 	public String getExplanation() { return explanation; }
 	public boolean isEscalated() { return escalated; }
+	public Classification getClassification() { return classification; }
 	public Instant getCreatedAt() { return createdAt; }
 }

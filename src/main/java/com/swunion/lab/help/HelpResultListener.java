@@ -2,6 +2,7 @@ package com.swunion.lab.help;
 
 import com.swunion.lab.agent.AgentAction;
 import com.swunion.lab.agent.AgentFinishedEvent;
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.agent.Outcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +32,8 @@ public class HelpResultListener {
 		Outcome outcome = action == null ? null : action.getOutcome();
 		HelpStatus status = outcome == null ? HelpStatus.NO_ACTION : HelpStatus.valueOf(outcome.name());
 		String explanation = action == null ? null : action.getExplanation();
-		int rows = helps.updateResult(id, status, explanation, outcome == Outcome.ESCALATED);
+		Classification classification = action == null ? null : action.getClassification();
+		int rows = helps.updateResult(id, status, explanation, outcome == Outcome.ESCALATED, classification);
 		if (rows == 0) {
 			log.warn("도움 요청 {}이(가) 없어 결과를 기록하지 못했습니다.", id);
 		}

@@ -2,6 +2,7 @@ package com.swunion.lab.help;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
@@ -40,7 +41,7 @@ class HelpRequestRepositoryTest {
 		HelpRequest h = helps.save(new HelpRequest(s, "KeyError", "KeyError: a"));
 
 		helps.markEscalated(h.getId());
-		helps.updateResult(h.getId(), HelpStatus.EXPLAINED, "설명", false);
+		helps.updateResult(h.getId(), HelpStatus.EXPLAINED, "설명", false, null);
 
 		HelpRequest r = helps.findById(h.getId()).orElseThrow();
 		assertThat(r.getStatus()).isEqualTo(HelpStatus.EXPLAINED);
@@ -50,7 +51,19 @@ class HelpRequestRepositoryTest {
 
 		// 호출하지 않은 요청은 에이전트가 올린 값만 따른다.
 		HelpRequest h2 = helps.save(new HelpRequest(s, null, null));
-		helps.updateResult(h2.getId(), HelpStatus.RESOLVED, null, false);
+		helps.updateResult(h2.getId(), HelpStatus.RESOLVED, null, false, null);
 		assertThat(helps.findById(h2.getId()).orElseThrow().isEscalated()).isFalse();
+	}
+
+	@Test
+	void updateResultStoresClassification() {
+		Course c = courses.save(new Course("c", "3.12", "six==1.16.0"));
+		StudentSession s = sessions.save(new StudentSession(c, "영희", "t-repo-cls", "pw"));
+		HelpRequest h = helps.save(new HelpRequest(s, "KeyError", "KeyError: a"));
+		assertThat(helps.findById(h.getId()).orElseThrow().getClassification()).isNull();
+
+		helps.updateResult(h.getId(), HelpStatus.EXPLAINED, "설명", false, Classification.ENV);
+
+		assertThat(helps.findById(h.getId()).orElseThrow().getClassification()).isEqualTo(Classification.ENV);
 	}
 }

@@ -28,7 +28,7 @@ class HelpRecoveryTest {
 		StudentSession s = sessions.save(new StudentSession(c, "철수", "t-recover", "pw"));
 		HelpRequest stuck = helps.save(new HelpRequest(s, "KeyError", "KeyError: a"));
 		HelpRequest done = helps.save(new HelpRequest(s, "IndexError", "IndexError"));
-		helps.updateResult(done.getId(), HelpStatus.EXPLAINED, "설명", false);
+		helps.updateResult(done.getId(), HelpStatus.EXPLAINED, "설명", false, null);
 		Instant startedAt = Instant.now().plusSeconds(1);
 		// 새 서버가 웹 요청을 받기 시작한 뒤(복구가 돌기 전) 들어온 요청은 살아 있는 실행이 처리한다.
 		HelpRequest fresh = new HelpRequest(s, "TypeError", "TypeError");

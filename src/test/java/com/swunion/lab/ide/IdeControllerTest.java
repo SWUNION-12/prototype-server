@@ -170,6 +170,7 @@ class IdeControllerTest {
 				.andExpect(jsonPath("$.issuesText[1]").value("rich 버전 다름 (13.6.0, 기준 13.7.0)"))
 				.andExpect(jsonPath("$.needsHelp").value(false))
 				.andExpect(jsonPath("$.workspaceLost").value(false))
+				.andExpect(jsonPath("$.courseStatus").value("READY"))
 				.andExpect(jsonPath("$.latestHelp").doesNotExist())
 				.andReturn().getResponse().getContentAsString();
 
@@ -177,7 +178,7 @@ class IdeControllerTest {
 		Map<String, Object> fields = json.readValue(body, new TypeReference<Map<String, Object>>() {
 		});
 		assertThat(fields.keySet()).containsExactlyInAnyOrder("name", "courseName", "envStatus", "issues", "issuesText",
-				"needsHelp", "latestHelp", "workspaceLost");
+				"needsHelp", "latestHelp", "workspaceLost", "courseStatus");
 		assertThat(body).doesNotContain(a.key()).doesNotContain(a.token()).doesNotContain(a.password())
 				.doesNotContain("ideUrl").doesNotContain("idePassword").doesNotContain("40500")
 				.doesNotContain("containerId");

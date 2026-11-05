@@ -2,6 +2,7 @@ package com.swunion.lab.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
@@ -14,7 +15,11 @@ import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseStatus;
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.docker.DockerGateway;
+import com.swunion.lab.help.HelpRequest;
+import com.swunion.lab.help.HelpRequestRepository;
+import com.swunion.lab.help.HelpStatus;
 import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -41,6 +46,8 @@ class StudentControllerTest {
 	CourseRepository courses;
 	@Autowired
 	SessionRepository sessions;
+	@Autowired
+	HelpRequestRepository helps;
 	@Autowired
 	JsonMapper json;
 	@MockitoBean
@@ -97,15 +104,63 @@ class StudentControllerTest {
 		String body = mvc.perform(get("/api/s/tok-student-fields")).andExpect(status().isOk())
 				.andReturn().getResponse().getContentAsString();
 
-		// 기존 아홉 필드는 그대로이고, 공통 상태 뷰의 issuesText가 더해진다. 컨테이너 키는 학생 API에도 없다.
+		// 기존 아홉 필드는 그대로이고, 공통 상태 뷰의 issuesText와 courseStatus가 더해진다. 컨테이너 키는 학생 API에도 없다.
 		Map<String, Object> fields = json.readValue(body, new TypeReference<Map<String, Object>>() {
 		});
 		assertThat(fields.keySet()).containsExactlyInAnyOrder("name", "courseName", "ideUrl", "idePassword",
-				"envStatus", "issues", "issuesText", "needsHelp", "workspaceLost", "latestHelp");
+				"envStatus", "issues", "issuesText", "needsHelp", "workspaceLost", "latestHelp", "courseStatus");
 		assertThat(body).doesNotContain(key).doesNotContain("ideKey");
 		mvc.perform(get("/api/s/tok-student-fields")).andExpect(jsonPath("$.ideUrl").value("http://localhost:40125/"))
 				.andExpect(jsonPath("$.idePassword").value("pw-fields-24-chars-AB"))
 				.andExpect(jsonPath("$.issuesText").isEmpty());
+	}
+
+	@Test
+	void statusIncludesCourseStatus() throws Exception {
+		Course c = readyCourse("CTRL06", "x/course-6:1");
+		sessions.save(new StudentSession(c, "하나", "tok-course-status", "pw"));
+
+		mvc.perform(get("/api/s/tok-course-status")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.courseStatus").value("READY"));
+
+		c.setStatus(CourseStatus.ENDED);
+		courses.save(c);
+
+		mvc.perform(get("/api/s/tok-course-status")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.courseStatus").value("ENDED"));
+	}
+
+	@Test
+	void latestHelpCarriesClassification() throws Exception {
+		Course c = readyCourse("CTRL07", "x/course-7:1");
+		StudentSession s = sessions.save(new StudentSession(c, "두리", "tok-help-class", "pw"));
+		HelpRequest h = helps.save(new HelpRequest(s, "KeyError", "KeyError: a"));
+
+		// 처리 중에는 분류가 아직 없다. 키는 있고 값만 null이다.
+		mvc.perform(get("/api/s/tok-help-class")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.latestHelp.status").value("PROCESSING"))
+				.andExpect(jsonPath("$.latestHelp.classification").value(nullValue()));
+
+		helps.updateResult(h.getId(), HelpStatus.EXPLAINED, "설명", false, Classification.CODE);
+
+		mvc.perform(get("/api/s/tok-help-class")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.latestHelp.classification").value("CODE"));
+	}
+
+	@Test
+	void statusNeverCarriesPin() throws Exception {
+		Course c = readyCourse("CTRL08", "x/course-8:1");
+		StudentSession s = new StudentSession(c, "세나", "tok-no-pin", "pw");
+		sessions.save(s);
+		sessions.setPin(s.getId(), "$2a$10$hashhashhashhashhashhashhashhashhashhashhashhashhashhash");
+
+		String body = mvc.perform(get("/api/s/tok-no-pin")).andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		Map<String, Object> fields = json.readValue(body, new TypeReference<Map<String, Object>>() {
+		});
+		assertThat(fields).doesNotContainKeys("pin", "pinHash");
+		assertThat(body).doesNotContain("hashhash");
 	}
 
 	@Test

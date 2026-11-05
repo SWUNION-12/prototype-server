@@ -1,5 +1,6 @@
 package com.swunion.lab.help;
 
+import com.swunion.lab.agent.Classification;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -19,10 +20,11 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
 	// 에이전트 스레드와 학생 요청이 같은 행을 다루므로 필요한 컬럼만 갱신한다.
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update HelpRequest h set h.status = :status, h.explanation = :explanation, h.escalated = case when h.escalated = true then true else :escalated end"
-			+ " where h.id = :id")
+	@Query("update HelpRequest h set h.status = :status, h.explanation = :explanation, h.escalated = case when h.escalated = true then true else :escalated end,"
+			+ " h.classification = :classification where h.id = :id")
 	int updateResult(@Param("id") long id, @Param("status") HelpStatus status,
-			@Param("explanation") String explanation, @Param("escalated") boolean escalated);
+			@Param("explanation") String explanation, @Param("escalated") boolean escalated,
+			@Param("classification") Classification classification);
 
 	/** before보다 먼저 만들어진 from 상태 요청을 to로 닫는다. 서버 재시작 정리용(HelpRecovery). */
 	@Transactional

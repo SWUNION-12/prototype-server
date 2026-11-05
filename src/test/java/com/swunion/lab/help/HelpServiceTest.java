@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.swunion.lab.agent.AgentAction;
 import com.swunion.lab.agent.AgentFinishedEvent;
 import com.swunion.lab.agent.AgentTrigger;
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.agent.Outcome;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseStatus;
@@ -173,8 +175,10 @@ class HelpServiceTest {
 			AgentAction a = mock(AgentAction.class);
 			when(a.getOutcome()).thenReturn(o);
 			when(a.getExplanation()).thenReturn("설명");
+			when(a.getClassification()).thenReturn(Classification.CODE);
 			l.onFinished(new AgentFinishedEvent(a, 9L));
-			verify(helps).updateResult(9L, HelpStatus.valueOf(o.name()), "설명", o == Outcome.ESCALATED);
+			verify(helps).updateResult(9L, HelpStatus.valueOf(o.name()), "설명", o == Outcome.ESCALATED,
+					Classification.CODE);
 			org.mockito.Mockito.clearInvocations(helps);
 		}
 	}
@@ -186,11 +190,11 @@ class HelpServiceTest {
 		when(a.getOutcome()).thenReturn(Outcome.ESCALATED);
 		l.onFinished(new AgentFinishedEvent(a, 4L));
 		ArgumentCaptor<String> expl = ArgumentCaptor.forClass(String.class);
-		verify(helps).updateResult(eq(4L), eq(HelpStatus.ESCALATED), expl.capture(), eq(true));
+		verify(helps).updateResult(eq(4L), eq(HelpStatus.ESCALATED), expl.capture(), eq(true), isNull());
 		assertThat(expl.getValue()).isNull();
 		org.mockito.Mockito.clearInvocations(helps);
 		l.onFinished(new AgentFinishedEvent(a, null));
-		verify(helps, never()).updateResult(anyLong(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+		verify(helps, never()).updateResult(anyLong(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any());
 	}
 
 	@Test
@@ -198,7 +202,7 @@ class HelpServiceTest {
 		HelpResultListener l = new HelpResultListener(helps);
 		AgentAction a = mock(AgentAction.class);
 		when(a.getOutcome()).thenReturn(Outcome.RESOLVED);
-		when(helps.updateResult(anyLong(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(0);
+		when(helps.updateResult(anyLong(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any())).thenReturn(0);
 		l.onFinished(new AgentFinishedEvent(a, 1L));
 	}
 }

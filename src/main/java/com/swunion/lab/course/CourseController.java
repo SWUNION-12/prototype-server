@@ -1,5 +1,6 @@
 package com.swunion.lab.course;
 
+import com.swunion.lab.session.SessionRepository;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,26 +23,28 @@ public class CourseController {
 	}
 
 	private final CourseService service;
+	private final SessionRepository sessions;
 
-	public CourseController(CourseService service) {
+	public CourseController(CourseService service, SessionRepository sessions) {
 		this.service = service;
+		this.sessions = sessions;
 	}
 
 	@PostMapping
 	ResponseEntity<Map<String, Object>> create(@RequestBody CreateRequest req) {
 		Course c = service.create(req.name(), req.pythonVersion(), req.packages());
-		return ResponseEntity.status(HttpStatus.CREATED).body(view(c));
+		return ResponseEntity.status(HttpStatus.CREATED).body(view(c, 0));
 	}
 
 	@GetMapping
 	List<Map<String, Object>> list() {
-		return service.list().stream().map(CourseController::view).toList();
+		return service.list().stream().map(c -> view(c, sessions.countByCourse_Id(c.getId()))).toList();
 	}
 
 	@GetMapping("/{id}")
 	ResponseEntity<Map<String, Object>> get(@PathVariable long id) {
 		Course c = service.get(id);
-		return c == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(view(c));
+		return c == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(view(c, sessions.countByCourse_Id(c.getId())));
 	}
 
 	/** 컨테이너만 멈춘다. 볼륨은 남는다. */
@@ -69,13 +72,14 @@ public class CourseController {
 	}
 
 	// 파일 경로(작업 폴더, 이미지 이름 등)는 응답에 싣지 않는다.
-	static Map<String, Object> view(Course c) {
+	static Map<String, Object> view(Course c, long studentCount) {
 		Map<String, Object> m = new LinkedHashMap<>();
 		m.put("id", c.getId());
 		m.put("name", c.getName());
 		m.put("pythonVersion", c.getPythonVersion());
 		m.put("packages", Arrays.asList(c.getPackagesText().split("\n")));
 		m.put("status", c.getStatus());
+		m.put("studentCount", studentCount);
 		m.put("errorSummary", c.getErrorSummary());
 		m.put("entryCode", c.getEntryCode());
 		m.put("createdAt", c.getCreatedAt() == null ? null : c.getCreatedAt().toString());

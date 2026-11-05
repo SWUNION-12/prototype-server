@@ -25,6 +25,8 @@ public final class StudentStatusView {
 		Map<String, Object> m = new LinkedHashMap<>();
 		m.put("name", s.getDisplayName());
 		m.put("courseName", s.getCourse().getName());
+		// 화면이 수업 종료를 알아채 종료 화면으로 바꾼다.
+		m.put("courseStatus", s.getCourse().getStatus());
 		m.put("envStatus", s.getEnvStatus());
 		m.put("issues", issues);
 		m.put("issuesText", issuesText);
@@ -45,6 +47,8 @@ public final class StudentStatusView {
 		m.put("status", h.getStatus());
 		m.put("errorType", h.getErrorType());
 		m.put("explanation", h.getExplanation());
+		// 이 기능 전의 행과 처리 중인 요청은 null이다.
+		m.put("classification", h.getClassification());
 		m.put("escalated", h.isEscalated());
 		m.put("createdAt", h.getCreatedAt());
 		return m;

@@ -22,6 +22,9 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	/** 강사 대시보드가 수업의 학생을 한 번에 읽는다. */
 	List<StudentSession> findByCourse_Id(long courseId);
 
+	/** 수업 목록·단건 응답의 학생 수. */
+	long countByCourse_Id(long courseId);
+
 	/** 수업 종료가 멈출 컨테이너를 찾는다. */
 	List<StudentSession> findByCourse_IdAndContainerIdIsNotNull(long courseId);
 
