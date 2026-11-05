@@ -68,13 +68,23 @@ export function formatStartup(ms: number): string {
   return ms < 1000 ? `기동 ${ms} ms` : `기동 ${(ms / 1000).toFixed(1)}초`;
 }
 
+/** AI 조치 보고 칸에 보이는 글자 수 상한(공백 포함). 서버 ReportText.MAX와 같은 값이다. */
+export const REPORT_MAX = 50;
+
+/** 서버 규칙과 같다: 50자를 넘으면 앞 49자 + "…". 이 제한 이전에 저장된 행도 같게 보이도록 화면에서 한 번 더 자른다. */
+export function clampReport(text: string | null): string | null {
+  if (text === null) return null;
+  const chars = Array.from(text);
+  return chars.length <= REPORT_MAX ? text : `${chars.slice(0, REPORT_MAX - 1).join("")}…`;
+}
+
 /** AI 조치 보고 칸. 강사가 봐야 할 이유가 있으면 그것을, 없으면 최근 조치를 보여 준다. */
 export function latestReport(s: StudentRow): { text: string | null; at: string | null } {
   const last = s.recentActions[0];
   if (s.needsHelp && s.needsHelpReason) {
-    return { text: s.needsHelpReason, at: last?.at ?? null };
+    return { text: clampReport(s.needsHelpReason), at: last?.at ?? null };
   }
-  return { text: last?.summary ?? null, at: last?.at ?? null };
+  return { text: clampReport(last?.summary ?? null), at: last?.at ?? null };
 }
 
 /** 서버는 설명을 "의미\n\n확인할 곳: 위치" 한 문자열로 준다. */
