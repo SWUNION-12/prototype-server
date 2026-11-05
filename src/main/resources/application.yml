@@ -33,12 +33,20 @@ lab:
   # output_config.effort(low)는 Claude 5 계열(claude-haiku-5, claude-sonnet-5, claude-opus-5, claude-fable-5로 시작하는 id)에만 보낸다.
   # 다른 모델로 바꾸면 effort 없이 모델 기본값으로 호출한다. effort를 모르는 모델에 보내면 모든 호출이 400이 된다.
   llm-model: ${LLM_MODEL:claude-haiku-5-5}
+  # anthropic(기본): Anthropic API 키로 직접 호출. bedrock: EC2 인스턴스 역할로 Amazon Bedrock 호출(API 키 불필요).
+  # bedrock이면 llm-model에 Bedrock 모델 id(예: global.anthropic.claude-haiku-4-5-20251001-v1:0)를 넣는다. 다른 값이면 서버가 시작하지 않는다.
+  llm-provider: ${LLM_PROVIDER:anthropic}
+  bedrock-region: ${BEDROCK_REGION:ap-southeast-1}
   check-interval-seconds: ${CHECK_INTERVAL_SECONDS:15}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   ide-bind-address: ${IDE_BIND_ADDRESS:127.0.0.1}
   # 학생 화면의 IDE 주소. {base}=public-base-url, {host}=그 호스트, {port}=학생 IDE 포트.
   # 배포(HTTPS 리버스 프록시)에서는 {base}/ide/{port}/ 로 바꾼다. http 직접 포트로는 실습 도우미 패널이 뜨지 않는다.
   ide-url-template: ${IDE_URL_TEMPLATE:http://{host}:{port}/}
+  # 학생 IDE를 누가 지키는가. password(기본): code-server가 비밀번호를 묻고 학생 화면이 보여 준다(Caddy 없는 로컬·LAN).
+  # proxy: code-server를 --auth none으로 띄우고 Caddy가 요청마다 /api/ide-auth/{port}로 주인 학생인지 묻는다.
+  # proxy는 Caddy 뒤에서만 쓴다. 다른 값이면 서버가 시작하지 않는다. 바꾼 값은 새로 만드는 컨테이너부터 적용된다.
+  ide-auth: ${IDE_AUTH:password}
   data-dir: ./data
   # :2부터 IDE 도움 패널 확장("실습 도우미")이 들어 있다. scripts/build-base-image.sh로 만든다.
   base-image: swunion/lab-base:2

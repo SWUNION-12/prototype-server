@@ -11,14 +11,15 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * 스크립트와 명령어를 만든다. 템플릿에 넣는 값은 서버가 정한 것(설정의 기준 주소, 16진 토큰, 숫자 수업 id)뿐이고,
+ * 스크립트와 명령어를 만든다. 템플릿에 넣는 값은 서버가 정한 것(설정의 기준 주소, 16진 다운로드 코드, 숫자 수업 id)뿐이고,
  * 학생이 붙여넣은 값은 어디에도 들어가지 않는다. 그래도 값이 쉘 따옴표를 깨지 못하게 한 번 더 검사한다.
+ * 주소에는 세션 토큰이 아니라 10분짜리 다운로드 코드(DownloadCodes)를 싣는다.
  */
 @Component
 public class InstallScriptRenderer {
 
 	private static final Pattern SAFE_BASE = Pattern.compile("^https?://[A-Za-z0-9.\\-:\\[\\]]+(/[A-Za-z0-9._~\\-/]*)?$");
-	private static final Pattern SAFE_TOKEN = Pattern.compile("^[0-9a-f]{1,64}$");
+	private static final Pattern SAFE_CODE = Pattern.compile("^[0-9a-f]{64}$");
 	// PEP 440의 로컬 버전(+)과 epoch(!)를 허용한다. 둘 다 verify.py의 r'''...''' 안 JSON에서 무해하다.
 	private static final Pattern SAFE_VERSION = Pattern.compile("^[A-Za-z0-9._+!-]+$");
 	private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
@@ -56,33 +57,33 @@ public class InstallScriptRenderer {
 		};
 	}
 
-	public String installCommand(String os, String token) {
-		checkToken(token);
+	public String installCommand(String os, String code) {
+		checkCode(code);
 		String base = safeBase();
 		return switch (os) {
-			case "macos" -> "curl -fsSL \"" + base + "/l/" + token + "/install.sh\" | sh";
-			case "windows" -> "powershell -ExecutionPolicy ByPass -c \"irm " + base + "/l/" + token
+			case "macos" -> "curl -fsSL \"" + base + "/l/" + code + "/install.sh\" | sh";
+			case "windows" -> "powershell -ExecutionPolicy ByPass -c \"irm " + base + "/l/" + code
 					+ "/install.ps1 | iex\"";
 			default -> throw new IllegalArgumentException("지원하지 않는 OS: " + os);
 		};
 	}
 
-	public String scriptUrl(String os, String token) {
-		checkToken(token);
-		return safeBase() + "/l/" + token + (os.equals("windows") ? "/install.ps1" : "/install.sh");
+	public String scriptUrl(String os, String code) {
+		checkCode(code);
+		return safeBase() + "/l/" + code + (os.equals("windows") ? "/install.ps1" : "/install.sh");
 	}
 
-	public String zipUrl(String token) {
-		checkToken(token);
-		return safeBase() + "/l/" + token + "/code.zip";
+	public String zipUrl(String code) {
+		checkCode(code);
+		return safeBase() + "/l/" + code + "/code.zip";
 	}
 
-	public String installSh(String token, long courseId) {
-		return fill("install.sh.tmpl", token, courseId);
+	public String installSh(String code, long courseId) {
+		return fill("install.sh.tmpl", code, courseId);
 	}
 
-	public String installPs1(String token, long courseId) {
-		return fill("install.ps1.tmpl", token, courseId);
+	public String installPs1(String code, long courseId) {
+		return fill("install.ps1.tmpl", code, courseId);
 	}
 
 	/**
@@ -106,9 +107,9 @@ public class InstallScriptRenderer {
 		return load("verify.py.tmpl").replace("{{EXPECTED_JSON}}", json);
 	}
 
-	private String fill(String template, String token, long courseId) {
-		checkToken(token);
-		String s = load(template).replace("{{BASE_URL}}", safeBase()).replace("{{TOKEN}}", token)
+	private String fill(String template, String code, long courseId) {
+		checkCode(code);
+		String s = load(template).replace("{{BASE_URL}}", safeBase()).replace("{{CODE}}", code)
 				.replace("{{COURSE_ID}}", Long.toString(courseId));
 		if (s.contains("{{")) {
 			throw new IllegalStateException("채워지지 않은 자리표시자가 남았습니다: " + template);
@@ -123,9 +124,9 @@ public class InstallScriptRenderer {
 		return baseUrl;
 	}
 
-	private static void checkToken(String token) {
-		if (token == null || !SAFE_TOKEN.matcher(token).matches()) {
-			throw new IllegalArgumentException("토큰 형식이 올바르지 않습니다.");
+	private static void checkCode(String code) {
+		if (code == null || !SAFE_CODE.matcher(code).matches()) {
+			throw new IllegalArgumentException("다운로드 코드 형식이 올바르지 않습니다.");
 		}
 	}
 

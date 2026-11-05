@@ -3,7 +3,9 @@ package com.swunion.lab.docker;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +14,7 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.StartContainerCmd;
 import com.github.dockerjava.api.model.HostConfig;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +38,22 @@ class DockerJavaGatewayCreateTest {
 		assertThat(host.getPidsLimit()).isEqualTo(256L);
 		assertThat(host.getPortBindings().getBindings()).hasSize(1);
 		verify(client.startContainerCmd("cid-1")).exec();
+	}
+
+	// 비밀번호 방식은 이미지의 CMD를 그대로 쓴다. proxy 방식만 실행 인자를 준다.
+	@Test
+	void cmdIsSentOnlyWhenTheSpecHasOne() {
+		DockerClient client = mock(DockerClient.class);
+		CreateContainerCmd create = stubCreate(client);
+		create(new DockerJavaGateway(client));
+		verify(create, never()).withCmd(anyList());
+
+		DockerClient proxyClient = mock(DockerClient.class);
+		CreateContainerCmd proxyCreate = stubCreate(proxyClient);
+		List<String> cmd = List.of("--bind-addr", "0.0.0.0:8080", "--auth", "none", "/home/coder/project");
+		new DockerJavaGateway(proxyClient).createAndStart(new ContainerSpec("name-1", "img:1", Map.of("PASSWORD", "pw"),
+				"vol-1", "/home/coder/project", "127.0.0.1", 8080, Map.of(), cmd));
+		verify(proxyCreate).withCmd(cmd);
 	}
 
 	@Test

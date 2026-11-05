@@ -42,10 +42,11 @@ public class WebConfig implements WebMvcConfigurer {
 	@Override
 	public void addViewControllers(ViewControllerRegistry registry) {
 		registry.addRedirectViewController("/", "/join").setStatusCode(HttpStatus.FOUND);
-		// 이미 나눠 준 링크와 열려 있던 탭을 위한 옛 주소. 학생 토큰(?t=)이 쿼리에 있어 쿼리를 그대로 넘긴다.
+		// 이미 나눠 준 링크와 열려 있던 탭을 위한 옛 주소. 수업 코드(?code=) 같은 쿼리를 그대로 넘긴다.
+		// 옛 학생 주소(/student.html?t=토큰)는 쿼리를 버린다. 학생은 이제 쿠키로 알아보므로 토큰을 주소에 다시 싣지 않는다.
 		// /instructor.html은 /instructor로 보낼 뿐이라 거기서 로그인을 요구받는다(보안 규칙을 비켜 가지 않는다).
 		redirectKeepingQuery(registry, "/join.html", "/join");
-		redirectKeepingQuery(registry, "/student.html", "/lab");
+		registry.addRedirectViewController("/student.html", "/lab").setStatusCode(HttpStatus.FOUND);
 		redirectKeepingQuery(registry, "/instructor.html", "/instructor");
 		redirectKeepingQuery(registry, "/dashboard.html", "/instructor");
 	}

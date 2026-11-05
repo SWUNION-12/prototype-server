@@ -171,21 +171,37 @@ class AuthFlowTest {
 				.andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
 	}
 
-	// 학생 화면과 IDE 확장은 쿠키 로그인을 쓰지 않는다(토큰은 경로, 컨테이너 키는 헤더). CSRF 없이 지금처럼 동작한다.
+	// 입장(PIN이 있다)과 IDE 확장(헤더의 컨테이너 키, 쿠키 없음)은 CSRF 없이 동작한다.
 	@Test
-	void studentPathsSkipCsrf() throws Exception {
+	void joinAndIdeExtensionSkipCsrf() throws Exception {
 		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
 						.content("{\"entryCode\":\"NOPE00\",\"name\":\"철수\",\"pin\":\"1234\"}"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error").value(Matchers.containsString("수업 코드")));
-		mvc.perform(post("/api/s/no-such-token/help").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"errorText\":\"x\"}"))
-				.andExpect(status().isNotFound());
 		mvc.perform(post("/api/ide/help").contentType(MediaType.APPLICATION_JSON).content("{\"errorText\":\"x\"}"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE));
-		mvc.perform(post("/l/no-such-token/install.sh"))
-				.andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
+		mvc.perform(post("/api/ide/escalate")).andExpect(status().isUnauthorized());
+	}
+
+	// 학생 화면은 쿠키(LAB_STUDENT)로 학생을 알아보므로 /api/me/** 의 POST는 강사 쪽과 같은 CSRF 검사를 받는다.
+	// 쿠키만 실린 요청이 다른 사이트의 폼 전송이다. 학생 쿠키가 무효여도 CSRF가 먼저 막는다.
+	@Test
+	void studentPostsNeedCsrf() throws Exception {
+		Cookie student = new Cookie("LAB_STUDENT", "no-such-token");
+		Cookie csrf = lastCookie(mvc.perform(get("/api/me")).andReturn(), CSRF_COOKIE);
+		for (String path : new String[] { "/api/me/help", "/api/me/escalate", "/api/me/logout",
+				"/api/me/local/link?os=macos", "/api/me/local/diagnostics", "/api/me/local/verify" }) {
+			mvc.perform(post(path).cookie(student).contentType(MediaType.APPLICATION_JSON).content("{}"))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.error").value(AuthResponses.CSRF_REJECTED));
+			mvc.perform(post(path).cookie(student, csrf).header(CSRF_HEADER, csrf.getValue())
+							.contentType(MediaType.APPLICATION_JSON).content("{}"))
+					.andExpect(result -> assertThat(result.getResponse().getStatus()).as(path).isNotEqualTo(403));
+		}
+		// GET은 검사하지 않는다(터미널의 다운로드 코드 주소, Caddy의 IDE 확인).
+		mvc.perform(get("/l/no-such-code/install.sh")).andExpect(status().isNotFound());
+		mvc.perform(get("/api/ide-auth/40000")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

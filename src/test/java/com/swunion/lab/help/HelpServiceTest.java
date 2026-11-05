@@ -70,7 +70,7 @@ class HelpServiceTest {
 
 	@Test
 	void sessionOverloadsUseTheGivenSessionWithoutLookingUpATokenAgain() {
-		// IDE API는 컨테이너 키로 이미 세션을 찾았다. 토큰 경로와 같은 규칙(수업 열림, 처리 중 거절)을 그대로 탄다.
+		// IDE API는 컨테이너 키로 이미 세션을 찾았다. 학생 쿠키 경로와 같은 규칙(수업 열림, 처리 중 거절)을 그대로 탄다.
 		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
 
 		HelpRequest h = service.request(session, "KeyError: 'a'");

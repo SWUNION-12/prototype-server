@@ -20,6 +20,7 @@ import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.docker.ExecResult;
 import com.swunion.lab.session.SessionRepository;
+import com.swunion.lab.session.StudentRequests;
 import com.swunion.lab.session.StudentSession;
 import java.io.IOException;
 import java.net.URI;
@@ -55,6 +56,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.util.FileSystemUtils;
 import tools.jackson.databind.json.JsonMapper;
@@ -261,8 +263,10 @@ class LifecycleIT {
 		assertThat(cookie(login(after.getHostPort(), after.getIdePassword()))).contains("code-server-session");
 
 		// 예전 토큰은 더 쓸 수 없고, 새 토큰의 학생 화면은 작업 공간 유실을 알리지 않는다.
-		assertThat(mvc.perform(get("/api/s/" + b.token())).andReturn().getResponse().getStatus()).isEqualTo(404);
-		Map<String, Object> me = map(mvc.perform(get("/api/s/" + back.token())).andReturn().getResponse());
+		assertThat(mvc.perform(get("/api/me").cookie(StudentRequests.cookie(b.token()))).andReturn().getResponse()
+				.getStatus()).isEqualTo(404);
+		Map<String, Object> me = map(mvc.perform(get("/api/me").cookie(StudentRequests.cookie(back.token())))
+				.andReturn().getResponse());
 		assertThat(me).containsEntry("workspaceLost", false);
 
 		// 다른 학생의 컨테이너는 건드리지 않았다.
@@ -297,7 +301,8 @@ class LifecycleIT {
 		assertThat(test.exitCode()).as("빈 작업 공간").isNotZero();
 		assertThat(after.getWorkspaceLostAt()).isNotNull();
 
-		Map<String, Object> me = map(mvc.perform(get("/api/s/" + back.token())).andReturn().getResponse());
+		Map<String, Object> me = map(mvc.perform(get("/api/me").cookie(StudentRequests.cookie(back.token())))
+				.andReturn().getResponse());
 		assertThat(me).containsEntry("workspaceLost", true).containsEntry("needsHelp", true);
 
 		Map<String, Object> row = dashboardRow("학생C");
@@ -363,11 +368,13 @@ class LifecycleIT {
 
 	private Joined join(String name, String pin, int expectedStatus) throws Exception {
 		String body = json.writeValueAsString(Map.of("entryCode", entryCode, "name", name, "pin", pin));
-		MockHttpServletResponse res = mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
-				.content(body)).andReturn().getResponse();
+		MvcResult joined = mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON).content(body))
+				.andReturn();
+		MockHttpServletResponse res = joined.getResponse();
 		assertThat(res.getStatus()).as(res.getContentAsString(StandardCharsets.UTF_8)).isEqualTo(expectedStatus);
 		Map<String, Object> m = map(res);
-		String token = (String) m.get("token");
+		// 토큰은 본문이 아니라 학생 쿠키로 온다.
+		String token = StudentRequests.token(joined);
 		remember(session(token));
 		return new Joined(token, Boolean.TRUE.equals(m.get("resumed")));
 	}

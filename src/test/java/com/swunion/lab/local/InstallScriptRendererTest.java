@@ -14,15 +14,15 @@ import org.junit.jupiter.api.condition.OS;
 
 class InstallScriptRendererTest {
 
-	private static final String TOKEN = "ab12".repeat(16);
+	private static final String CODE = "ab12".repeat(16);
 	private final InstallScriptRenderer r = new InstallScriptRenderer("http://192.168.0.5:8080");
 
 	@Test
 	void installShIsFullyRenderedAndHasRequiredSteps() {
-		String s = r.installSh(TOKEN, 7);
+		String s = r.installSh(CODE, 7);
 		assertThat(s).doesNotContain("{{");
 		assertThat(s).contains("uv sync --frozen", "uv run --frozen python verify.py", "SWUNION_DIR",
-				"http://192.168.0.5:8080", TOKEN, "swunion-course-", "command -v uv",
+				"http://192.168.0.5:8080", CODE, "swunion-course-", "command -v uv",
 				"curl -LsSf https://astral.sh/uv/install.sh | sh", "$HOME/.local/bin",
 				"failed=install:$1", "fail_block UvSyncFailed", "---SWUNION-VERIFY-BEGIN---");
 		assertThat(s).contains("COURSE_ID=\"7\"");
@@ -30,20 +30,20 @@ class InstallScriptRendererTest {
 
 	@Test
 	void installPs1IsFullyRenderedAndHasRequiredSteps() {
-		String s = r.installPs1(TOKEN, 7);
+		String s = r.installPs1(CODE, 7);
 		assertThat(s).doesNotContain("{{");
 		assertThat(s).contains("irm https://astral.sh/uv/install.ps1", "uv sync --frozen",
-				"uv run --frozen python verify.py", "SWUNION_DIR", "http://192.168.0.5:8080", TOKEN,
+				"uv run --frozen python verify.py", "SWUNION_DIR", "http://192.168.0.5:8080", CODE,
 				"USERPROFILE\\.local\\bin", "failed=install:$Reason", "Write-FailBlock 'UvSyncFailed'");
 		assertThat(s).doesNotContain("AMD64");
 	}
 
 	@Test
 	void commands() {
-		assertThat(r.installCommand("macos", TOKEN))
-				.isEqualTo("curl -fsSL \"http://192.168.0.5:8080/l/" + TOKEN + "/install.sh\" | sh");
-		assertThat(r.installCommand("windows", TOKEN)).isEqualTo(
-				"powershell -ExecutionPolicy ByPass -c \"irm http://192.168.0.5:8080/l/" + TOKEN + "/install.ps1 | iex\"");
+		assertThat(r.installCommand("macos", CODE))
+				.isEqualTo("curl -fsSL \"http://192.168.0.5:8080/l/" + CODE + "/install.sh\" | sh");
+		assertThat(r.installCommand("windows", CODE)).isEqualTo(
+				"powershell -ExecutionPolicy ByPass -c \"irm http://192.168.0.5:8080/l/" + CODE + "/install.ps1 | iex\"");
 		String win = r.diagnoseCommand("windows");
 		assertThat(win).contains("PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "x86_64", "arm64", "os=windows");
 		assertThat(win).doesNotContain("\n");
@@ -56,7 +56,11 @@ class InstallScriptRendererTest {
 		assertThatThrownBy(() -> r.verifyPy(Map.of("six", "1.0'"))).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> r.verifyPy(Map.of("six", "1.0\\"))).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> r.installSh("abc\"; rm -rf ~; \"", 1)).isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new InstallScriptRenderer("http://x\"; rm -rf ~; \"").installSh(TOKEN, 1))
+		// 다운로드 코드는 늘 32바이트 16진 64자다. 짧은 값이나 대문자는 받지 않는다.
+		assertThatThrownBy(() -> r.installSh("abc123", 1)).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> r.installCommand("macos", "AB12".repeat(16))).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> r.zipUrl(null)).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new InstallScriptRenderer("http://x\"; rm -rf ~; \"").installSh(CODE, 1))
 				.isInstanceOf(IllegalStateException.class);
 	}
 

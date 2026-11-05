@@ -80,8 +80,9 @@ class WebConfigTest {
 	void oldPagesRedirectKeepingQuery() throws Exception {
 		mvc.perform(get("/join.html?code=ABC123")).andExpect(status().isFound())
 				.andExpect(header().string(HttpHeaders.LOCATION, "/join?code=ABC123"));
+		// 옛 학생 주소의 토큰은 새 주소로 옮기지 않는다(학생은 쿠키로 알아본다).
 		mvc.perform(get("/student.html?t=tok")).andExpect(status().isFound())
-				.andExpect(header().string(HttpHeaders.LOCATION, "/lab?t=tok"));
+				.andExpect(header().string(HttpHeaders.LOCATION, "/lab"));
 		mvc.perform(get("/join.html")).andExpect(status().isFound())
 				.andExpect(header().string(HttpHeaders.LOCATION, "/join"));
 	}
@@ -103,7 +104,7 @@ class WebConfigTest {
 	void unknownPathIs404() throws Exception {
 		mvc.perform(get("/nope")).andExpect(status().isNotFound());
 		// 컨트롤러가 먼저 받으므로 정적 대체가 API 404를 가로채지 않는다. 404만 봐서는 둘을 구별할 수 없어 처리기 종류를 본다.
-		mvc.perform(get("/api/s/없는토큰")).andExpect(status().isNotFound())
+		mvc.perform(get("/api/me")).andExpect(status().isNotFound())
 				.andExpect(handler().handlerType(StudentController.class));
 	}
 

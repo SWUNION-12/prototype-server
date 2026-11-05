@@ -117,11 +117,14 @@ class MacInstallIT {
 			String token = student.getToken();
 			String base = "http://127.0.0.1:" + PORT;
 
-			// 1) 조회 명령: 서버가 준 명령을 sh -c로 실행한 출력을 그대로 제출
-			Map<?, ?> info = json.readValue(get(base + "/api/s/" + token + "/local/install?os=macos").body(), Map.class);
+			// 1) 조회 명령: 서버가 준 명령을 sh -c로 실행한 출력을 그대로 제출. 화면처럼 학생 쿠키와 CSRF 헤더를 싣는다.
+			HttpResponse<String> linked = post(base + "/api/me/local/link?os=macos", token, "");
+			assertThat(linked.statusCode()).as(linked.body()).isEqualTo(200);
+			Map<?, ?> info = json.readValue(linked.body(), Map.class);
+			assertThat((String) info.get("installCommand")).doesNotContain(token);
 			String diagnoseOut = run(List.of("sh", "-c", (String) info.get("diagnoseCommand")), Map.of(), work);
 			log.info("조회 명령 출력:\n{}", diagnoseOut);
-			assertThat(post(base + "/api/s/" + token + "/local/diagnostics",
+			assertThat(post(base + "/api/me/local/diagnostics", token,
 					json.writeValueAsString(Map.of("os", "macos", "text", diagnoseOut))).statusCode()).isEqualTo(204);
 			assertThat(localInstalls.findBySessionId(student.getId()).orElseThrow().getStatus())
 					.isEqualTo(LocalStatus.DIAGNOSED);
@@ -136,7 +139,7 @@ class MacInstallIT {
 			assertThat(Files.exists(installDir.resolve("uv.lock"))).isTrue();
 
 			// 3) 출력 전체를 verify API에 제출
-			HttpResponse<String> v = post(base + "/api/s/" + token + "/local/verify",
+			HttpResponse<String> v = post(base + "/api/me/local/verify", token,
 					json.writeValueAsString(Map.of("text", installOut)));
 			log.info("verify 응답: {}", v.body());
 			assertThat(v.statusCode()).isEqualTo(200);
@@ -152,7 +155,7 @@ class MacInstallIT {
 					"mkdir -p /home/coder/project/.venv /home/coder/project/__pycache__ && "
 							+ "echo x > /home/coder/project/.venv/x && echo x > /home/coder/project/__pycache__/a.pyc"),
 					Duration.ofSeconds(20));
-			HttpResponse<byte[]> zip = http.send(HttpRequest.newBuilder(URI.create(base + "/l/" + token + "/code.zip"))
+			HttpResponse<byte[]> zip = http.send(HttpRequest.newBuilder(URI.create((String) info.get("zipUrl")))
 					.build(), HttpResponse.BodyHandlers.ofByteArray());
 			assertThat(zip.statusCode()).isEqualTo(200);
 			List<String> names = new ArrayList<>();
@@ -165,8 +168,11 @@ class MacInstallIT {
 			assertThat(names).contains("course-" + courseId + "/hello.py");
 			assertThat(names).noneMatch(n -> n.contains(".venv") || n.contains("__pycache__") || n.endsWith(".pyc"));
 
-			// 5) 허용하지 않은 파일은 404
-			assertThat(get(base + "/l/" + token + "/files/secret.txt").statusCode()).isEqualTo(404);
+			// 5) 허용하지 않은 파일은 404. 세션 토큰은 다운로드 코드로 쓸 수 없다.
+			String scriptUrl = (String) info.get("scriptUrl");
+			String codeBase = scriptUrl.substring(0, scriptUrl.lastIndexOf('/'));
+			assertThat(get(codeBase + "/files/secret.txt").statusCode()).isEqualTo(404);
+			assertThat(get(base + "/l/" + token + "/install.sh").statusCode()).isEqualTo(404);
 		}
 		finally {
 			if (student != null) {
@@ -193,8 +199,11 @@ class MacInstallIT {
 				HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 	}
 
-	private HttpResponse<String> post(String url, String body) throws Exception {
+	// 화면이 보내는 것과 같다: 학생 쿠키와, XSRF-TOKEN 쿠키와 같은 값의 X-XSRF-TOKEN 헤더.
+	private HttpResponse<String> post(String url, String token, String body) throws Exception {
 		return http.send(HttpRequest.newBuilder(URI.create(url)).header("Content-Type", "application/json")
+				.header("Cookie", "LAB_STUDENT=" + token + "; XSRF-TOKEN=mac-install-it")
+				.header("X-XSRF-TOKEN", "mac-install-it")
 				.POST(HttpRequest.BodyPublishers.ofString(body)).build(),
 				HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 	}

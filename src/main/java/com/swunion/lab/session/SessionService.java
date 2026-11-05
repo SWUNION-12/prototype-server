@@ -244,7 +244,7 @@ public class SessionService {
 			containerId = docker.createAndStart(spec);
 			int hostPort = docker.hostPort(containerId, ContainerSpecs.IDE_PORT);
 			// containerId가 들어가는 순간부터 점검과 에이전트가 이 행을 쓴다. 이후로는 엔티티 전체를 save하지 않는다.
-			if (sessions.updateContainerCreated(sid, containerId, hostPort) == 0) {
+			if (sessions.updateContainerCreated(sid, containerId, hostPort, specs.ideAuthMode()) == 0) {
 				// 만드는 사이 강사가 이 학생을 지웠다. 학생 삭제는 아직 기록되지 않은 이 컨테이너를 모르므로 여기서
 				// 치운다. 볼륨도 이 입장 전용 이름이고 행이 없으니 쓸 사람이 없다.
 				log.warn("세션 {}: 컨테이너를 만드는 사이 세션이 지워져 방금 만든 컨테이너와 볼륨을 지웁니다.", sid);
@@ -359,8 +359,34 @@ public class SessionService {
 		}
 	}
 
+	/**
+	 * 학생 쿠키(또는 다운로드 코드가 가리키는 토큰)로 세션을 찾는다. 쿠키가 없으면 저장소를 부르지 않고 거절한다.
+	 * 학생 쿠키 전에 발급한 토큰(tokenIssuedAt null)도 거절한다. 그 토큰은 주소에 실려 나갔으므로, 새어 나간 주소의
+	 * 토큰을 쿠키에 넣어 쓰지 못하게 하려는 것이다. 그 학생은 PIN으로 다시 입장하면 새 토큰을 받는다.
+	 */
 	public StudentSession byToken(String token) {
-		return sessions.findByToken(token == null ? "" : token).orElseThrow(SessionNotFoundException::new);
+		if (token == null || token.isBlank()) {
+			throw new SessionNotFoundException();
+		}
+		return sessions.findByToken(token).filter(s -> s.getTokenIssuedAt() != null)
+				.orElseThrow(SessionNotFoundException::new);
+	}
+
+	/**
+	 * 나가기. 쿠키가 가리키는 세션이 있으면 토큰을 바꾼다. 그 쿠키 값과 이미 나눠 준 다운로드 코드가 함께 끊긴다(공용
+	 * PC에 남은 값, 화면 공유로 보인 설치 명령). 같은 학생이 다른 브라우저로 열어 둔 화면도 "다시 입장"이 된다.
+	 * 세션·컨테이너·코드는 그대로이고 같은 이름과 PIN으로 다시 들어온다. 쿠키가 없거나 무효면 아무것도 하지 않는다.
+	 */
+	public void signOut(String token) {
+		StudentSession s;
+		try {
+			s = byToken(token);
+		}
+		catch (SessionNotFoundException e) {
+			return;
+		}
+		sessions.rotateToken(s.getId(), newToken());
+		log.info("세션 {}: 나가기로 토큰을 바꿨습니다.", s.getId());
 	}
 
 	/**
@@ -437,7 +463,11 @@ public class SessionService {
 		this.ideUrlTemplate = template;
 	}
 
+	/** @return 기록된 IDE 포트가 없으면(컨테이너를 만드는 중이거나 멈춤) null */
 	public String ideUrl(StudentSession s) {
+		if (s.getHostPort() == null) {
+			return null;
+		}
 		String base = props.publicBaseUrl().replaceAll("/+$", "");
 		String host = URI.create(props.publicBaseUrl()).getHost();
 		return ideUrlTemplate.replace("{base}", base).replace("{host}", host == null ? "localhost" : host)

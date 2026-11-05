@@ -1,9 +1,10 @@
 # 수업 {{COURSE_ID}} 로컬 설치 스크립트. 실행 전에 이 주소에서 내용을 볼 수 있습니다.
+# 이 주소와 스크립트가 파일을 받는 주소는 화면에서 명령을 받은 뒤 10분 동안만 쓸 수 있습니다.
 # 설치 폴더는 SWUNION_DIR 환경변수로 바꿀 수 있습니다.
 # irm | iex 로 실행되면 exit 가 학생의 PowerShell 창을 닫으므로 함수로 감싸고 return 으로 끝낸다.
 function Invoke-SwunionInstall {
   $PublicBaseUrl = '{{BASE_URL}}'
-  $Token = '{{TOKEN}}'
+  $Code = '{{CODE}}'
   $CourseId = '{{COURSE_ID}}'
   if ($env:SWUNION_DIR) { $Dir = $env:SWUNION_DIR } else { $Dir = Join-Path $env:USERPROFILE "swunion-course-$CourseId" }
 
@@ -32,7 +33,7 @@ function Invoke-SwunionInstall {
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     Set-Location -Path $Dir
     foreach ($f in 'pyproject.toml', 'uv.lock', '.python-version', 'verify.py') {
-      Invoke-WebRequest -UseBasicParsing -Uri "$PublicBaseUrl/l/$Token/files/$f" -OutFile (Join-Path $Dir $f)
+      Invoke-WebRequest -UseBasicParsing -Uri "$PublicBaseUrl/l/$Code/files/$f" -OutFile (Join-Path $Dir $f)
     }
   } catch {
     Write-Output '수업 파일을 내려받지 못했습니다.'

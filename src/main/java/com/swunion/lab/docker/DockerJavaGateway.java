@@ -2,6 +2,7 @@ package com.swunion.lab.docker;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
+import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.Bind;
@@ -170,8 +171,12 @@ public class DockerJavaGateway implements DockerGateway {
 				.withExtraHosts("host.docker.internal:host-gateway");
 		List<String> env = new ArrayList<>();
 		spec.env().forEach((k, v) -> env.add(k + "=" + v));
-		String id = docker.createContainerCmd(spec.image()).withName(spec.name()).withEnv(env)
-				.withLabels(spec.labels()).withExposedPorts(port).withHostConfig(host).exec().getId();
+		CreateContainerCmd create = docker.createContainerCmd(spec.image()).withName(spec.name()).withEnv(env)
+				.withLabels(spec.labels()).withExposedPorts(port).withHostConfig(host);
+		if (spec.cmd() != null) {
+			create = create.withCmd(spec.cmd());
+		}
+		String id = create.exec().getId();
 		try {
 			docker.startContainerCmd(id).exec();
 		}

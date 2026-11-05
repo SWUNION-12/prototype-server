@@ -55,6 +55,9 @@ public class ContainerEnsurer {
 		String containerId = blankToNull(s.getContainerId());
 		String volumeName = blankToNull(s.getVolumeName());
 		try {
+			if (containerId != null && mustReplace(s)) {
+				return replace(s, containerId, volumeName);
+			}
 			if (containerId != null) {
 				if (!restartIfRunning && docker.isRunning(containerId)) {
 					return new EnsureResult(EnsureOutcome.ALREADY_RUNNING, s.getHostPort());
@@ -70,6 +73,28 @@ public class ContainerEnsurer {
 			log.error("세션 {} 컨테이너를 돌게 하지 못했습니다.", sid, e);
 			return FAILED;
 		}
+	}
+
+	/**
+	 * 비밀번호 없이(proxy) 만든 컨테이너인데 지금 설정이 password다. 그대로 켜면 --auth none이 남고 학생 화면도 비밀번호를
+	 * 보이지 않아, Caddy 없는 로컬·LAN에서 IDE가 열린다. 반대 방향(password 컨테이너를 proxy 설정에서 켜기)은 비밀번호가
+	 * 더해질 뿐이라 그대로 둔다.
+	 */
+	private boolean mustReplace(StudentSession s) {
+		return IdeAuthMode.of(s) == IdeAuthMode.PROXY && specs.ideAuthMode() == IdeAuthMode.PASSWORD;
+	}
+
+	/** 옛 컨테이너를 지우고(볼륨은 남는다) 같은 볼륨으로 지금 설정의 컨테이너를 만든다. 돌고 있어도 바꾼다. */
+	private EnsureResult replace(StudentSession s, String containerId, String volumeName) {
+		long sid = s.getId();
+		if (volumeName == null) {
+			// 볼륨을 모르면 다시 만들 수 없다. 학생 코드가 든 컨테이너를 지우지 않고 실패로 둔다.
+			log.warn("세션 {}: 비밀번호 없이 만든 IDE인데 볼륨 이름이 없어 바꾸지 못했습니다.", sid);
+			return FAILED;
+		}
+		log.info("세션 {}: 비밀번호 없이 만든 IDE를 지금 설정(password)에 맞춰 같은 볼륨으로 다시 만듭니다.", sid);
+		docker.remove(containerId);
+		return recreate(s, volumeName);
 	}
 
 	// 재시작하면 호스트 포트가 바뀔 수 있어 다시 읽어 저장한다. 기다리는 동안 점검·학생 호출이 다른 컬럼을
@@ -103,7 +128,7 @@ public class ContainerEnsurer {
 		String newId = docker.createAndStart(spec);
 		try {
 			int port = docker.hostPort(newId, ContainerSpecs.IDE_PORT);
-			if (sessions.updateContainerCreated(sid, newId, port) == 0) {
+			if (sessions.updateContainerCreated(sid, newId, port, specs.ideAuthMode()) == 0) {
 				// 만드는 사이에 세션이 지워졌다. 기록할 곳이 없는 컨테이너를 남기지 않는다.
 				removeOwnContainer(sid, newId);
 				if (workspaceLost) {

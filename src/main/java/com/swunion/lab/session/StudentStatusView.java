@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 학생 화면(GET /api/s/{token})과 IDE 패널(GET /api/ide/status)이 함께 쓰는 상태 응답의 공통 부분.
+ * 학생 화면(GET /api/me)과 IDE 패널(GET /api/ide/status)이 함께 쓰는 상태 응답의 공통 부분.
  * 학생 화면은 여기에 IDE 주소와 비밀번호를 더하고, IDE 패널은 그대로 쓴다. 토큰, 컨테이너 키, containerId,
  * 포트는 싣지 않는다. 호출자가 응답에 더 얹을 수 있도록 바꿀 수 있는 맵을 돌려준다.
  */

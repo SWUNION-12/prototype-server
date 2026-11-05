@@ -309,7 +309,8 @@ class ContainerEnsurerTest {
 		docker.containerExistsAnswer = false;
 		docker.volumeExistsAnswer = false;
 		SessionRepository failing = repositoryThatCanFail();
-		doThrow(new IllegalStateException("db down")).when(failing).updateContainerCreated(anyLong(), any(), anyInt());
+		doThrow(new IllegalStateException("db down")).when(failing).updateContainerCreated(anyLong(), any(), anyInt(),
+				any());
 
 		EnsureResult r = ensurerOn(failing).ensureRunning(session);
 

@@ -28,6 +28,10 @@ public class StudentSession {
 	private String displayName;
 	@Column(unique = true, nullable = false, length = 64)
 	private String token;
+	// 지금 토큰을 발급한 시각. 학생 쿠키(LAB_STUDENT)를 쓰기 전에 만든 행은 null이다. 그때 토큰은 주소(/lab?t=,
+	// /l/<토큰>/)에 실려 나갔으므로 받아 주지 않는다(SessionService.byToken). 그 학생은 수업 코드·이름·PIN으로 다시
+	// 입장하고, 되찾기가 토큰을 바꾸며 이 값을 채운다.
+	private Instant tokenIssuedAt;
 	private String containerId;
 	private String volumeName;
 	private Integer hostPort;
@@ -63,6 +67,11 @@ public class StudentSession {
 	// 고유 제약에서 NULL끼리는 다르게 보므로 걸리지 않는다. null 행에는 키를 만들어 주지 않는다.
 	@Column(unique = true, length = 64)
 	private String ideKey;
+	// 지금 컨테이너를 만들 때의 IDE 확인 방식. 이 기능 전에 만든 행은 null이고 비밀번호 방식으로 본다(IdeAuthMode.of).
+	// 멈춘 컨테이너를 다시 켜면 처음 만든 실행 인자 그대로라 값도 그대로이고, 새로 만들 때만 바뀐다.
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private IdeAuthMode ideAuthMode;
 
 	protected StudentSession() {
 	}
@@ -73,6 +82,7 @@ public class StudentSession {
 		this.token = token;
 		this.idePassword = idePassword;
 		this.createdAt = Instant.now();
+		this.tokenIssuedAt = this.createdAt;
 	}
 
 	/** PIN 입장으로 만드는 새 행. 이름 키와 PIN 해시를 처음부터 갖는다. */
@@ -94,6 +104,7 @@ public class StudentSession {
 	public Course getCourse() { return course; }
 	public String getDisplayName() { return displayName; }
 	public String getToken() { return token; }
+	public Instant getTokenIssuedAt() { return tokenIssuedAt; }
 	public String getContainerId() { return containerId; }
 	public void setContainerId(String containerId) { this.containerId = containerId; }
 	public String getVolumeName() { return volumeName; }
@@ -130,4 +141,6 @@ public class StudentSession {
 	public Instant getPinLockedUntil() { return pinLockedUntil; }
 	// 읽기만 한다. 키는 새 행을 넣을 때 정해지고 이후 어떤 쓰기도 바꾸지 않는다.
 	public String getIdeKey() { return ideKey; }
+	// 읽기만 한다. 쓰기는 컨테이너를 기록하는 SessionRepository.updateContainerCreated가 한다.
+	public IdeAuthMode getIdeAuthMode() { return ideAuthMode; }
 }

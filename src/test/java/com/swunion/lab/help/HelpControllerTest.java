@@ -1,5 +1,7 @@
 package com.swunion.lab.help;
 
+import static com.swunion.lab.session.StudentRequests.cookie;
+import static com.swunion.lab.session.StudentRequests.xsrf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
@@ -69,37 +71,40 @@ class HelpControllerTest {
 		when(trigger.isRunning(anyLong())).thenReturn(false);
 		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
 
-		mvc.perform(post("/api/s/" + tok + "/help").contentType(MediaType.APPLICATION_JSON)
+		mvc.perform(post("/api/me/help").cookie(cookie(tok)).with(xsrf()).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"errorText\":\"KeyError: 'a'\"}"))
 				.andExpect(status().isAccepted()).andExpect(jsonPath("$.helpId").isNumber());
 
-		mvc.perform(get("/api/s/" + tok)).andExpect(status().isOk())
+		mvc.perform(get("/api/me").cookie(cookie(tok))).andExpect(status().isOk())
 				.andExpect(jsonPath("$.latestHelp.status").value("PROCESSING"))
 				.andExpect(jsonPath("$.latestHelp.errorType").value("KeyError"))
 				.andExpect(jsonPath("$.latestHelp.escalated").value(false))
 				.andExpect(jsonPath("$.latestHelp.errorText").doesNotExist());
 
-		mvc.perform(post("/api/s/" + tok + "/escalate")).andExpect(status().isNoContent());
-		mvc.perform(get("/api/s/" + tok)).andExpect(jsonPath("$.needsHelp").value(true));
+		mvc.perform(post("/api/me/escalate").cookie(cookie(tok)).with(xsrf())).andExpect(status().isNoContent());
+		mvc.perform(get("/api/me").cookie(cookie(tok))).andExpect(jsonPath("$.needsHelp").value(true));
 	}
 
 	@Test
 	void emptyBodyIsAllowed() throws Exception {
 		String tok = newToken("t-empty");
 		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
-		mvc.perform(post("/api/s/" + tok + "/help")).andExpect(status().isAccepted());
+		mvc.perform(post("/api/me/help").cookie(cookie(tok)).with(xsrf())).andExpect(status().isAccepted());
 	}
 
 	@Test
 	void busyIs409AndUnknownTokenIs404() throws Exception {
 		String tok = newToken("t-busy");
 		when(trigger.isRunning(anyLong())).thenReturn(true);
-		mvc.perform(post("/api/s/" + tok + "/help").contentType(MediaType.APPLICATION_JSON).content("{}"))
+		mvc.perform(post("/api/me/help").cookie(cookie(tok)).with(xsrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error").value("에이전트가 처리 중입니다. 잠시 후 다시 시도해 주세요"));
-		mvc.perform(post("/api/s/nope/help").contentType(MediaType.APPLICATION_JSON).content("{}"))
+		mvc.perform(post("/api/me/help").cookie(cookie("nope")).with(xsrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
 				.andExpect(status().isNotFound());
-		mvc.perform(post("/api/s/nope/escalate")).andExpect(status().isNotFound());
+		mvc.perform(post("/api/me/escalate").cookie(cookie("nope")).with(xsrf())).andExpect(status().isNotFound());
+		mvc.perform(post("/api/me/escalate").with(xsrf())).andExpect(status().isNotFound());
 	}
 
 	@Test
@@ -108,15 +113,15 @@ class HelpControllerTest {
 		when(trigger.isRunning(anyLong())).thenReturn(false);
 		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
 
-		mvc.perform(post("/api/s/" + tok + "/help").contentType(MediaType.APPLICATION_JSON)
+		mvc.perform(post("/api/me/help").cookie(cookie(tok)).with(xsrf()).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"errorText\":\"KeyError: 'a'\"}"))
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("종료된 수업입니다"));
-		mvc.perform(post("/api/s/" + tok + "/escalate"))
+		mvc.perform(post("/api/me/escalate").cookie(cookie(tok)).with(xsrf()))
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("종료된 수업입니다"));
 
 		// 종료 뒤의 도움 요청이 에이전트를 깨워 restart_ide로 컨테이너를 되살리면 안 된다.
 		verify(trigger, never()).onHelp(any(), anyLong(), any(), any());
-		mvc.perform(get("/api/s/" + tok)).andExpect(status().isOk())
+		mvc.perform(get("/api/me").cookie(cookie(tok))).andExpect(status().isOk())
 				.andExpect(jsonPath("$.needsHelp").value(false))
 				.andExpect(jsonPath("$.latestHelp").doesNotExist());
 	}

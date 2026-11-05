@@ -109,17 +109,51 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 			+ " where s.id = :id and s.lastEscalatedSignature is not null")
 	int clearLastEscalatedSignature(@Param("id") long id);
 
+	/**
+	 * 컨테이너를 다시 켠 뒤 새 호스트 포트와 실행 여부를 쓴다. 같은 포트를 기록한 다른 세션이 있으면 같은 트랜잭션에서
+	 * 먼저 지운다(releasePort).
+	 */
+	@Transactional
+	default int updateContainerState(long id, int port, boolean running) {
+		releasePort(port, id);
+		return writeContainerState(id, port, running);
+	}
+
+	/**
+	 * join이나 재생성이 컨테이너를 만든 직후. 이때부터 점검이 이 행을 읽고 쓰므로 자기 컬럼만 쓴다. 그 컨테이너를 만든
+	 * IDE 확인 방식도 함께 쓴다. 학생 화면이 비밀번호를 보일지가 컨테이너마다 다르기 때문이다. 같은 포트를 기록한 다른
+	 * 세션이 있으면 같은 트랜잭션에서 먼저 지운다(releasePort).
+	 */
+	@Transactional
+	default int updateContainerCreated(long id, String containerId, int port, IdeAuthMode mode) {
+		releasePort(port, id);
+		return writeContainerCreated(id, containerId, port, mode);
+	}
+
+	/**
+	 * 한 호스트 포트의 주인은 한 세션뿐이다. Docker는 멈추거나 지운 컨테이너의 포트를 다른 컨테이너에 다시 준다(dockerd를
+	 * 다시 켜면 처음 번호부터 다시 준다). 옛 주인의 기록이 남으면 Caddy의 IDE 확인(/api/ide-auth/{port})이 옛 주인의 쿠키로
+	 * 새 주인의 IDE를 열어 준다. 그래서 포트를 기록하기 직전에 그 포트를 기록한 다른 세션의 포트를 지운다.
+	 * 직접 부르지 말고 updateContainerState·updateContainerCreated를 쓴다.
+	 */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.hostPort = null where s.hostPort = :port and s.id <> :id")
+	int releasePort(@Param("port") int port, @Param("id") long keepId);
+
+	/** updateContainerState에서만 부른다(포트 주인 정리 없이 쓰면 안 된다). */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.hostPort = :port, s.containerRunning = :running where s.id = :id")
-	int updateContainerState(@Param("id") long id, @Param("port") int port, @Param("running") boolean running);
+	int writeContainerState(@Param("id") long id, @Param("port") int port, @Param("running") boolean running);
 
-	/** join이 컨테이너를 만든 직후. 이때부터 점검이 이 행을 읽고 쓰므로 join도 자기 컬럼만 쓴다. */
+	/** updateContainerCreated에서만 부른다(포트 주인 정리 없이 쓰면 안 된다). */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update StudentSession s set s.containerId = :containerId, s.hostPort = :port, s.containerRunning = true"
-			+ " where s.id = :id")
-	int updateContainerCreated(@Param("id") long id, @Param("containerId") String containerId, @Param("port") int port);
+	@Query("update StudentSession s set s.containerId = :containerId, s.hostPort = :port, s.containerRunning = true,"
+			+ " s.ideAuthMode = :mode where s.id = :id")
+	int writeContainerCreated(@Param("id") long id, @Param("containerId") String containerId, @Param("port") int port,
+			@Param("mode") IdeAuthMode mode);
 
 	/** code-server 응답을 기다리는 동안(최대 60초) 점검·에이전트가 쓴 값을 덮지 않도록 기동 시간만 쓴다. */
 	@Transactional
@@ -127,10 +161,14 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Query("update StudentSession s set s.startupMillis = :millis where s.id = :id")
 	int updateStartupMillis(@Param("id") long id, @Param("millis") long millis);
 
-	/** 수업 종료 뒤에는 점검이 돌지 않으므로, 멈춘 컨테이너를 대시보드가 실행 중으로 보이지 않게 직접 내린다. */
+	/**
+	 * 수업 종료 뒤에는 점검이 돌지 않으므로, 멈춘 컨테이너를 대시보드가 실행 중으로 보이지 않게 직접 내린다. 멈춘
+	 * 컨테이너의 포트는 Docker가 다른 컨테이너에 다시 줄 수 있으므로 포트 기록도 지운다(다시 켜면 새로 쓴다).
+	 */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update StudentSession s set s.containerRunning = false, s.ideConnected = false where s.id = :id")
+	@Query("update StudentSession s set s.containerRunning = false, s.ideConnected = false, s.hostPort = null"
+			+ " where s.id = :id")
 	int markStopped(@Param("id") long id);
 
 	/**
@@ -153,11 +191,19 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Query("update StudentSession s set s.volumeName = :volume where s.id = :id")
 	int updateVolumeName(@Param("id") long id, @Param("volume") String volume);
 
-	/** 되찾기 성공 뒤 예전 토큰을 끊는다. 학생 화면·설치 링크가 모두 토큰으로 세션을 찾으므로 함께 끊긴다. */
+	/**
+	 * 되찾기 성공이나 나가기 뒤 예전 토큰을 끊는다. 학생 쿠키·다운로드 코드·IDE 확인이 모두 토큰으로 세션을 찾으므로
+	 * 함께 끊긴다. 발급 시각을 함께 써서 학생 쿠키 이후에 발급한 토큰임을 남긴다(StudentSession.tokenIssuedAt).
+	 */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update StudentSession s set s.token = :token where s.id = :id")
-	int rotateToken(@Param("id") long id, @Param("token") String token);
+	@Query("update StudentSession s set s.token = :token, s.tokenIssuedAt = :issuedAt where s.id = :id")
+	int rotateToken(@Param("id") long id, @Param("token") String token, @Param("issuedAt") Instant issuedAt);
+
+	@Transactional
+	default int rotateToken(long id, String token) {
+		return rotateToken(id, token, Instant.now());
+	}
 
 	/** 이 기능 전에 만든 행이 처음 되찾아질 때 이름 키를 채운다. 이미 있으면 그대로 둔다. */
 	@Transactional

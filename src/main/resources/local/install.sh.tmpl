@@ -1,8 +1,9 @@
 #!/bin/sh
 # 수업 {{COURSE_ID}} 로컬 설치 스크립트. 실행 전에 이 주소에서 내용을 볼 수 있습니다.
+# 이 주소와 스크립트가 파일을 받는 주소는 화면에서 명령을 받은 뒤 10분 동안만 쓸 수 있습니다.
 # 설치 폴더는 SWUNION_DIR 환경변수로 바꿀 수 있습니다.
 PUBLIC_BASE_URL="{{BASE_URL}}"
-TOKEN="{{TOKEN}}"
+CODE="{{CODE}}"
 COURSE_ID="{{COURSE_ID}}"
 SWUNION_DIR="${SWUNION_DIR:-$HOME/swunion-course-$COURSE_ID}"
 
@@ -27,7 +28,7 @@ fi
 echo "[2/4] 수업 파일 내려받기: $SWUNION_DIR"
 mkdir -p "$SWUNION_DIR" && cd "$SWUNION_DIR" || { fail_block DownloadFailed; exit 1; }
 for f in pyproject.toml uv.lock .python-version verify.py; do
-  if ! curl -fsSL "$PUBLIC_BASE_URL/l/$TOKEN/files/$f" -o "$f"; then
+  if ! curl -fsSL "$PUBLIC_BASE_URL/l/$CODE/files/$f" -o "$f"; then
     echo "$f 를 내려받지 못했습니다."
     fail_block DownloadFailed
     exit 1

@@ -54,9 +54,11 @@ public class SecurityConfig {
 	// instructor/ 아래 파일이다. /instructor/**는 /instructor 자체를, /instructor.*/**는 리소스 핸들러가 끝 슬래시를 떼고
 	// 찾는 /instructor.html/ 같은 주소까지 덮는다. 그보다 먼저 로그인 화면 파일(/instructor/login, login.html·login.txt,
 	// login/ 아래 RSC 조각)만 연다. 패턴이 끝 슬래시를 맞추지 않으므로 /instructor/login.html/ 같은 주소는 로그인이 필요하다.
-	// 학생은 세션 토큰 경로(/api/join, /api/s/{token}, /l/{token})로, 학생 컨테이너 안의 확장은 컨테이너 키(/api/ide/**,
-	// 헤더 X-Session-Key)로만 접근하고 쿠키 로그인을 쓰지 않으므로 CSRF 검사에서 뺀다. 강사 요청과 로그인·로그아웃은
-	// XSRF-TOKEN 쿠키 값을 X-XSRF-TOKEN 헤더로 보내야 한다.
+	// 학생은 입장(/api/join) 때 받은 LAB_STUDENT 쿠키로 /api/me/** 를 쓴다. 쿠키로 학생을 알아보므로 /api/me/** 의 POST는
+	// 강사 요청과 같이 XSRF-TOKEN 쿠키 값을 X-XSRF-TOKEN 헤더로 보내야 한다(학생 쿠키의 SameSite=Strict와 겹쳐 지킨다).
+	// 입장은 PIN이 있어야 하므로 CSRF 검사에서 뺀다. 학생 컨테이너 안의 확장은 컨테이너 키(/api/ide/**, 헤더 X-Session-Key)로만
+	// 접근하고 쿠키를 쓰지 않으므로 뺀다. 터미널이 쓰는 /l/{다운로드 코드}/** 와 Caddy가 묻는 /api/ide-auth/{port}는 GET뿐이라
+	// CSRF 검사와 무관하고, 로그인 없이 열려 있다(anyRequest().permitAll()). 학생 확인은 각 컨트롤러가 쿠키·코드로 한다.
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, AuthResponses responses) throws Exception {
 		PathPatternRequestMatcher.Builder path = paths();
@@ -70,8 +72,7 @@ public class SecurityConfig {
 						.anyRequest().permitAll())
 				// spa(): 쿠키가 없는 요청의 응답에 HttpOnly가 아닌 XSRF-TOKEN 쿠키를 심고(화면이 처음 열릴 때 생긴다),
 				// 헤더로 온 값을 쿠키 값과 그대로 비교한다. 쿠키는 https 요청일 때만 Secure다.
-				.csrf(c -> c.spa().ignoringRequestMatchers(path.matcher("/api/join"), path.matcher("/api/s/**"),
-						path.matcher("/l/**"), path.matcher("/api/ide/**")))
+				.csrf(c -> c.spa().ignoringRequestMatchers(path.matcher("/api/join"), path.matcher("/api/ide/**")))
 				.httpBasic(AbstractHttpConfigurer::disable)
 				// 로그인 화면을 따로 정해 두어야 Spring Security 기본 로그인 화면(/login)이 생기지 않는다.
 				// 로그인하면 세션 ID를 바꾸고 CSRF 값을 새로 만든다(Spring Security 기본 동작).

@@ -6,6 +6,7 @@ import com.swunion.lab.course.CourseService;
 import com.swunion.lab.course.PackageSpec;
 import com.swunion.lab.course.SpecValidator;
 import com.swunion.lab.docker.DockerGateway;
+import com.swunion.lab.session.SessionNotFoundException;
 import com.swunion.lab.session.SessionService;
 import com.swunion.lab.session.StudentSession;
 import java.io.ByteArrayOutputStream;
@@ -39,30 +40,54 @@ public class LocalService {
 	private final InstallScriptRenderer renderer;
 	private final LocalInstallRepository repo;
 	private final JsonMapper json;
+	private final DownloadCodes codes;
 
 	public LocalService(SessionService sessions, CourseService courses, DockerGateway docker,
-			InstallScriptRenderer renderer, LocalInstallRepository repo, JsonMapper json) {
+			InstallScriptRenderer renderer, LocalInstallRepository repo, JsonMapper json, DownloadCodes codes) {
 		this.sessions = sessions;
 		this.courses = courses;
 		this.docker = docker;
 		this.renderer = renderer;
 		this.repo = repo;
 		this.json = json;
+		this.codes = codes;
 	}
 
-	public Map<String, String> installInfo(String token, String os) {
-		sessions.byToken(token);
+	/**
+	 * "내 PC로 이어가기" 명령. 부를 때마다 새 다운로드 코드를 만들어 설치 명령과 스크립트·zip 주소에 싣는다.
+	 * expiresAt이 지나면 화면이 다시 받는다.
+	 */
+	public Map<String, String> link(StudentSession s, String os) {
 		requireOs(os);
+		DownloadCodes.Issued issued = codes.issue(s);
+		String code = issued.code();
 		Map<String, String> m = new LinkedHashMap<>();
 		m.put("diagnoseCommand", renderer.diagnoseCommand(os));
-		m.put("installCommand", renderer.installCommand(os, token));
-		m.put("scriptUrl", renderer.scriptUrl(os, token));
-		m.put("zipUrl", renderer.zipUrl(token));
+		m.put("installCommand", renderer.installCommand(os, code));
+		m.put("scriptUrl", renderer.scriptUrl(os, code));
+		m.put("zipUrl", renderer.zipUrl(code));
+		m.put("expiresAt", issued.expiresAt().toString());
 		return m;
 	}
 
-	public void saveDiagnostics(String token, String os, String text) {
-		StudentSession s = sessions.byToken(token);
+	/**
+	 * 다운로드 코드가 가리키는 세션. 코드가 살아 있어도 재입장으로 토큰이 바뀌었거나 학생·수업이 지워졌으면 그 코드를
+	 * 버리고 만료와 같게 다룬다.
+	 *
+	 * @throws DownloadCodeExpiredException
+	 */
+	public StudentSession byCode(String code) {
+		String token = codes.tokenFor(code);
+		try {
+			return sessions.byToken(token);
+		}
+		catch (SessionNotFoundException e) {
+			codes.revoke(code);
+			throw new DownloadCodeExpiredException();
+		}
+	}
+
+	public void saveDiagnostics(StudentSession s, String os, String text) {
 		Diagnostics d = DiagnosticsParser.parse(text, os);
 		LocalInstall li = repo.findBySessionId(s.getId()).orElseGet(() -> new LocalInstall(s));
 		li.setOs(d.os());
@@ -74,8 +99,7 @@ public class LocalService {
 		repo.save(li);
 	}
 
-	public Map<String, Object> verify(String token, String text) {
-		StudentSession s = sessions.byToken(token);
+	public Map<String, Object> verify(StudentSession s, String text) {
 		VerifyResult r = VerifyOutputParser.parse(text);
 		LocalInstall li = repo.findBySessionId(s.getId()).orElseGet(() -> new LocalInstall(s));
 		li.setStatus(r.ok() ? LocalStatus.OK : LocalStatus.FAIL);
@@ -99,17 +123,17 @@ public class LocalService {
 		return m;
 	}
 
-	public String installSh(String token) {
-		return renderer.installSh(token, sessions.byToken(token).getCourse().getId());
+	/** @param code 스크립트가 수업 파일을 받을 때 다시 쓰는 다운로드 코드(이 스크립트를 받은 그 코드) */
+	public String installSh(StudentSession s, String code) {
+		return renderer.installSh(code, s.getCourse().getId());
 	}
 
-	public String installPs1(String token) {
-		return renderer.installPs1(token, sessions.byToken(token).getCourse().getId());
+	public String installPs1(StudentSession s, String code) {
+		return renderer.installPs1(code, s.getCourse().getId());
 	}
 
 	/** @return 허용 이름이 아니거나 파일이 아직 없으면 null */
-	public String file(String token, String name) {
-		StudentSession s = sessions.byToken(token);
+	public String file(StudentSession s, String name) {
 		Course course = s.getCourse();
 		if (name.equals("verify.py")) {
 			return renderer.verifyPy(expectedDirect(course));
@@ -141,8 +165,7 @@ public class LocalService {
 	}
 
 	/** 컨테이너가 멈춰 있어도 docker cp는 된다. 실패하면 CodeUnavailableException. */
-	public byte[] codeZip(String token) {
-		StudentSession s = sessions.byToken(token);
+	public byte[] codeZip(StudentSession s) {
 		if (s.getContainerId() == null) {
 			throw new CodeUnavailableException("클라우드 환경이 아직 만들어지지 않았습니다.");
 		}
@@ -155,10 +178,6 @@ public class LocalService {
 			throw new CodeUnavailableException("클라우드 코드를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.", e);
 		}
 		return out.toByteArray();
-	}
-
-	public Course courseOf(String token) {
-		return sessions.byToken(token).getCourse();
 	}
 
 	public List<LocalInstall> forCourse(long courseId) {

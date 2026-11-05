@@ -27,7 +27,7 @@ public class HelpService {
 		return request(sessions.byToken(token), errorText);
 	}
 
-	/** 학생 토큰 경로와 IDE 컨테이너 키 경로가 같은 규칙을 타도록, 세션을 찾는 방법과 요청 처리를 나눈다. */
+	/** 학생 쿠키 경로와 IDE 컨테이너 키 경로가 같은 규칙을 타도록, 세션을 찾는 방법과 요청 처리를 나눈다. */
 	public HelpRequest request(StudentSession s, String errorText) {
 		requireOpenCourse(s);
 		if (trigger.isRunning(s.getId())) {
