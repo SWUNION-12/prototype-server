@@ -157,13 +157,18 @@ class LifecycleIT {
 				remember(s);
 			}
 		}
-		catch (RuntimeException ignored) {
+		catch (RuntimeException e) {
+			log.warn("정리할 세션 목록을 읽지 못했습니다: {}", e.getMessage());
 		}
 		for (String id : seenContainers) {
 			try {
 				client.removeContainerCmd(id).withForce(true).exec();
 			}
-			catch (RuntimeException ignored) {
+			catch (NotFoundException alreadyGone) {
+				// 수업 삭제 테스트가 이미 지웠다.
+			}
+			catch (RuntimeException e) {
+				log.warn("컨테이너 {} 정리 실패: {}", id, e.getMessage());
 			}
 		}
 		for (String v : seenVolumes) {
@@ -173,7 +178,8 @@ class LifecycleIT {
 					docker.removeVolume(v);
 				}
 			}
-			catch (RuntimeException ignored) {
+			catch (RuntimeException e) {
+				log.warn("볼륨 {} 정리 실패: {}", v, e.getMessage());
 			}
 		}
 		if (imageTag != null) {
