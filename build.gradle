@@ -74,3 +74,36 @@ tasks.register('llmTest', Test) {
 tasks.withType(Test).configureEach {
 	jvmArgs '-Xshare:off'
 }
+
+// 화면(web/)은 Next.js 정적 빌드다. bootJar만 이 결과(web/out)를 jar의 static/ 자리에 담는다.
+// test와 compileJava는 웹 빌드에 기대지 않으므로 Node와 pnpm이 없어도 돈다.
+def webDir = layout.projectDirectory.dir('web')
+
+tasks.register('webInstall', Exec) {
+	description = 'web/의 의존성을 잠금 파일 그대로 설치한다'
+	group = 'build'
+	workingDir webDir
+	commandLine 'pnpm', 'install', '--frozen-lockfile'
+	inputs.files(webDir.file('package.json'), webDir.file('pnpm-lock.yaml'), webDir.file('pnpm-workspace.yaml'))
+	outputs.dir webDir.dir('node_modules')
+}
+
+tasks.register('webBuild', Exec) {
+	description = 'web/을 정적 파일(web/out)로 빌드한다'
+	group = 'build'
+	dependsOn 'webInstall'
+	workingDir webDir
+	commandLine 'pnpm', 'build'
+	inputs.dir webDir.dir('src')
+	// public/은 없을 수 있어 files로 받는다(dir 입력은 폴더가 없으면 실패한다).
+	inputs.files(webDir.dir('public'))
+	inputs.files(webDir.file('package.json'), webDir.file('pnpm-lock.yaml'), webDir.file('next.config.ts'),
+			webDir.file('tsconfig.json'))
+	outputs.dir webDir.dir('out')
+}
+
+tasks.named('bootJar') {
+	from(tasks.named('webBuild')) {
+		into 'BOOT-INF/classes/static'
+	}
+}
