@@ -6,7 +6,13 @@ your-name.duckdns.org {
 	@ide path_regexp ide ^/ide/(3276[89]|327[7-9][0-9]|32[89][0-9][0-9]|3[3-9][0-9]{3}|[45][0-9]{4}|60[0-9]{3})(/.*)$
 	handle @ide {
 		uri strip_prefix /ide/{re.ide.1}
-		reverse_proxy 127.0.0.1:{re.ide.1}
+		reverse_proxy 127.0.0.1:{re.ide.1} {
+			# IDE는 강사 화면과 같은 출처라 브라우저가 이 앱의 쿠키(강사 세션 JSESSIONID, CSRF XSRF-TOKEN)를 학생 컨테이너에도
+			# 보낸다. 그 둘만 떼고 나머지(code-server-session 등)는 그대로 넘긴다. 첫 번째 줄은 중간·끝 쿠키를,
+			# 두 번째 줄은 맨 앞 쿠키를 지운 뒤 남는 "; "를 정리한다.
+			header_up Cookie "(^|;\s*)(JSESSIONID|XSRF-TOKEN)=[^;]*" ""
+			header_up Cookie "^;\s*" ""
+		}
 	}
 	handle {
 		reverse_proxy 127.0.0.1:8080
