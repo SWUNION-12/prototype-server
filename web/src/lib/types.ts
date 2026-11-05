@@ -83,28 +83,24 @@ export type LatestHelp = {
   id: number;
   status: HelpStatus;
   errorType: string | null;
-  classification?: Classification | null;
+  classification: Classification | null;
   explanation: string | null;
   escalated: boolean;
   createdAt: string;
 };
 
-export type EnvIssue = {
-  type: "MISSING" | "VERSION_MISMATCH" | "PYTHON_MISMATCH" | "IDE_DOWN";
-  name: string | null;
-  expected: string | null;
-  actual: string | null;
-};
-
 export type Me = {
   name: string;
   courseName: string;
-  courseStatus?: CourseStatus;
+  courseStatus: CourseStatus;
   ideUrl: string;
   idePassword: string;
   envStatus: EnvStatus;
-  issues: EnvIssue[];
+  // issues는 점검이 저장한 원본이라 모양을 믿지 않는다. 화면에는 서버가 풀어 준 issuesText를 쓴다.
+  issues: unknown[];
+  issuesText: string[];
   needsHelp: boolean;
+  workspaceLost: boolean;
   latestHelp: LatestHelp | null;
 };
 

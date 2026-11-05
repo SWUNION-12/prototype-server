@@ -15,6 +15,9 @@ import { useEffect, useState } from "react";
 import { ApiError, student } from "@/lib/api";
 import type { InstallInfo, Os, VerifyResult } from "@/lib/types";
 
+// 서버가 준 주소는 http(s)나 같은 사이트 경로일 때만 링크로 쓴다.
+const isSafeHref = (u: string) => /^https?:\/\/\S+$/i.test(u) || /^\/[^\s/]\S*$/.test(u);
+
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 function Command({ code }: { code: string }) {
@@ -96,9 +99,13 @@ function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }
               {terminal}에서 실행하면 수업과 같은 환경이 설치되고 검증 결과가 출력돼요.
             </Text>
             <Command code={info.installCommand} />
-            <Link href={info.scriptUrl} isExternalLink>
-              실행 전에 스크립트 내용 보기
-            </Link>
+            {isSafeHref(info.scriptUrl) ? (
+              <Link href={info.scriptUrl} isExternalLink>
+                실행 전에 스크립트 내용 보기
+              </Link>
+            ) : (
+              <Text type="supporting">스크립트 주소를 확인할 수 없습니다. 강사에게 알려 주세요.</Text>
+            )}
           </VStack>
           <Divider />
           <VStack gap={3}>

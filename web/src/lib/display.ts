@@ -1,4 +1,4 @@
-import type { Classification, CourseStatus, EnvIssue, EnvStatus, StudentRow } from "./types";
+import type { Classification, CourseStatus, EnvStatus, StudentRow } from "./types";
 
 export const SERVICE_NAME = "코딩책상";
 
@@ -30,25 +30,6 @@ export const LOCAL_LABEL: Record<string, string> = {
   OK: "내 PC 설치 완료",
   FAIL: "내 PC 설치 실패",
 };
-
-/** 서버 DashboardService.readable과 같은 문장. */
-export function describeIssue(i: EnvIssue): string {
-  const name = i.name ?? "알 수 없음";
-  const expected = i.expected ?? "알 수 없음";
-  const actual = i.actual ?? "알 수 없음";
-  switch (i.type) {
-    case "MISSING":
-      return `${name} 없음 (기준 ${expected})`;
-    case "VERSION_MISMATCH":
-      return `${name} 버전 다름 (${actual}, 기준 ${expected})`;
-    case "PYTHON_MISMATCH":
-      return i.actual === "error" ? "파이썬 실행 실패" : `파이썬 버전 다름 (${actual}, 기준 ${expected})`;
-    case "IDE_DOWN":
-      return "IDE 중단";
-    default:
-      return name;
-  }
-}
 
 export function studentCountLabel(count: number): string {
   return `학생 ${count}명`;

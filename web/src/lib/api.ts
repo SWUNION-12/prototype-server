@@ -95,7 +95,7 @@ const s = (token: string) => `/api/s/${encodeURIComponent(token)}`;
 
 export const student = {
   join: (input: { entryCode: string; name: string; pin: string }) =>
-    request<{ token: string; rejoined: boolean }>("POST", "/api/join", { body: input }),
+    request<{ token: string; resumed: boolean }>("POST", "/api/join", { body: input }),
   me: (token: string) => request<Me>("GET", s(token)),
   help: (token: string, errorText: string | null) =>
     request<{ helpId: number }>("POST", `${s(token)}/help`, { body: { errorText } }),
