@@ -11,13 +11,13 @@ import { Text } from "@astryxdesign/core/Text";
 import { useToast } from "@astryxdesign/core/Toast";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useState } from "react";
 import { CourseProvider } from "@/components/admin/CourseContext";
 import { ProvisioningProgress } from "@/components/admin/ProvisioningProgress";
 import { AppHeader } from "@/components/AppHeader";
 import { ApiError, courses } from "@/lib/api";
 import { studentCountLabel } from "@/lib/display";
-import type { Dashboard } from "@/lib/types";
+import type { Dashboard, DeleteResult } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { SettingsTab } from "./SettingsTab";
 import { StudentsTab } from "./StudentsTab";
@@ -56,8 +56,18 @@ function EntryInfo({ entryCode }: { entryCode: string }) {
   );
 }
 
-function StatusBanner({ dashboard }: { dashboard: Dashboard }) {
+function StatusBanner({ dashboard, deleted }: { dashboard: Dashboard; deleted: boolean }) {
   const { status, errorSummary } = dashboard.course;
+  // 삭제 뒤에도 못 지운 자원 때문에 화면에 머물 때, 대시보드 값은 삭제 전(ENDED/FAILED)이라 그대로 두면 거짓이 된다.
+  if (deleted) {
+    return (
+      <Banner
+        status="warning"
+        title="삭제된 수업입니다"
+        description="더 이상 다시 열 수 없습니다. 지우지 못한 자원은 설정 탭에 남아 있습니다."
+      />
+    );
+  }
   if (status === "LOCKING" || status === "BUILDING") {
     return (
       <ProvisioningProgress
@@ -69,7 +79,7 @@ function StatusBanner({ dashboard }: { dashboard: Dashboard }) {
   }
   if (status === "FAILED") {
     return (
-      <Banner status="error" title="환경을 만들지 못했습니다" description="패키지나 버전을 바꿔 새 프로젝트를 만들어 주세요. 이 수업은 설정 탭에서 삭제할 수 있습니다.">
+      <Banner status="error" title="환경을 만들지 못했습니다" description="패키지나 버전을 바꿔 새 수업을 만들어 주세요. 이 수업은 설정 탭에서 삭제할 수 있습니다.">
         {errorSummary && <pre className="error-summary">{errorSummary}</pre>}
       </Banner>
     );
@@ -108,6 +118,8 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
     (e) => e instanceof ApiError && (e.status === 404 || e.status === 401),
   );
 
+  const [deleted, setDeleted] = useState<DeleteResult | null>(null);
+
   const base = `/instructor/course?id=${courseId}`;
 
   return (
@@ -145,12 +157,12 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
             {error instanceof ApiError && error.status === 401 && (
               <Banner status="error" title={error.message} />
             )}
-            <StatusBanner dashboard={data} />
+            <StatusBanner dashboard={data} deleted={deleted !== null} />
             <TabList value={tab} onChange={() => {}} hasDivider>
               <Tab value="students" label="학생 목록" href={base} />
-              <Tab value="settings" label="프로젝트 설정" href={`${base}&tab=settings`} />
+              <Tab value="settings" label="수업 설정" href={`${base}&tab=settings`} />
             </TabList>
-            <CourseProvider value={{ courseId, dashboard: data, refresh }}>{tab === "settings" ? <SettingsTab /> : <StudentsTab />}</CourseProvider>
+            <CourseProvider value={{ courseId, dashboard: data, refresh, deleted, setDeleted }}>{tab === "settings" ? <SettingsTab /> : <StudentsTab />}</CourseProvider>
           </>
         ) : error != null ? (
           error instanceof ApiError && error.status === 404 ? (
@@ -188,7 +200,7 @@ function CourseEntry() {
 
 export default function CoursePage() {
   return (
-    <Suspense>
+    <Suspense fallback={<Spinner label="불러오는 중" />}>
       <CourseEntry />
     </Suspense>
   );

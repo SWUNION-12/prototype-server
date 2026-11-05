@@ -67,7 +67,7 @@ export default function InstructorHomePage() {
           <Heading level={1}>환영합니다</Heading>
           <Button
             variant="primary"
-            label="프로젝트 생성하기"
+            label="수업 만들기"
             href="/instructor/new"
             icon={<Icon icon={PlusIcon} size="sm" />}
           />
@@ -80,7 +80,7 @@ export default function InstructorHomePage() {
         {error != null && !list ? (
           <Banner
             status="error"
-            title={error instanceof ApiError ? error.message : "강의 목록을 불러오지 못했습니다."}
+            title={error instanceof ApiError ? error.message : "수업 목록을 불러오지 못했습니다."}
           />
         ) : list === null ? (
           <Card>
@@ -93,7 +93,7 @@ export default function InstructorHomePage() {
             <Center minHeight={432}>
               <EmptyState
                 icon={<Icon icon={FolderIcon} size="lg" color="secondary" />}
-                title="현재 구성된 강의가 존재하지 않습니다."
+                title="현재 만들어진 수업이 없습니다."
                 headingLevel={2}
               />
             </Center>

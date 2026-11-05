@@ -17,7 +17,7 @@ import { useState } from "react";
 import { useCourse } from "@/components/admin/CourseContext";
 import { CourseBadge } from "@/components/StatusBadge";
 import { ApiError, courses } from "@/lib/api";
-import type { DeleteResult, ResumeResult } from "@/lib/types";
+import type { ResumeResult } from "@/lib/types";
 
 type Busy = "end" | "resume" | "delete" | null;
 
@@ -190,18 +190,8 @@ function ResumeCourse({ busy, setBusy }: { busy: Busy; setBusy: (b: Busy) => voi
   );
 }
 
-function DeleteCourse({
-  busy,
-  setBusy,
-  deleted,
-  setDeleted,
-}: {
-  busy: Busy;
-  setBusy: (b: Busy) => void;
-  deleted: DeleteResult | null;
-  setDeleted: (r: DeleteResult) => void;
-}) {
-  const { courseId, dashboard } = useCourse();
+function DeleteCourse({ busy, setBusy }: { busy: Busy; setBusy: (b: Busy) => void }) {
+  const { courseId, dashboard, deleted, setDeleted } = useCourse();
   const router = useRouter();
   const showToast = useToast();
   const [typed, setTyped] = useState("");
@@ -295,7 +285,7 @@ function DeleteCourse({
 export function SettingsTab() {
   // 종료, 재개, 삭제는 한 번에 하나만 돌린다. 삭제가 끝난 뒤에는 모두 잠근다.
   const [busy, setBusy] = useState<Busy>(null);
-  const [deleted, setDeleted] = useState<DeleteResult | null>(null);
+  const { deleted } = useCourse();
   const locked: Busy = busy ?? (deleted ? "delete" : null);
 
   return (
@@ -303,7 +293,7 @@ export function SettingsTab() {
       <CourseInfo />
       <EndCourse busy={locked} setBusy={setBusy} />
       <ResumeCourse busy={locked} setBusy={setBusy} />
-      <DeleteCourse busy={busy} setBusy={setBusy} deleted={deleted} setDeleted={setDeleted} />
+      <DeleteCourse busy={busy} setBusy={setBusy} />
     </VStack>
   );
 }

@@ -185,7 +185,7 @@ export default function NewProjectPage() {
       });
       router.push(`/instructor/course?id=${course.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "프로젝트를 만들지 못했습니다.");
+      setError(err instanceof ApiError ? err.message : "수업을 만들지 못했습니다.");
       setBusy(false);
     }
   }
@@ -197,7 +197,7 @@ export default function NewProjectPage() {
     <VStack className="app-root">
       <AppHeader />
       <VStack as="main" className="page page--narrow" gap={8}>
-        <Heading level={1}>프로젝트 설정</Heading>
+        <Heading level={1}>새 수업 설정</Heading>
         <Stepper activeStep={step} label="진행 단계">
           <Step step={0} label="1. 수업명" indicator="none" />
           <Step step={1} label="2. Python 버전" indicator="none" />
@@ -222,7 +222,7 @@ export default function NewProjectPage() {
         {step === 1 && <PythonStep value={python} onChange={setPython} />}
         {step === 2 && <DependencyStep selected={packages} onChange={setPackages} />}
 
-        {error && <Banner status="error" title="프로젝트를 만들지 못했습니다" description={error} />}
+        {error && <Banner status="error" title="수업을 만들지 못했습니다" description={error} />}
 
         <HStack hAlign="end" gap={2}>
           {step === 0 ? (
@@ -240,7 +240,7 @@ export default function NewProjectPage() {
           ) : (
             <Button
               variant="primary"
-              label="프로젝트 생성"
+              label="수업 만들기"
               onClick={create}
               isLoading={busy}
               isDisabled={packages.length === 0}
