@@ -117,7 +117,12 @@ IDE는 강사 화면과 같은 주소 아래에 있다. 그래서 `/ide/<포트>
 
 - `https://your-name.duckdns.org/join`이 200, `/instructor`는 `/instructor/login?next=...`으로 302, `/instructor/login`이 200, `/api/courses`가 로그인 없이 401이다.
 - 바깥에서 `http://<서버>:8080`으로는 접속되지 않는다.
-- `/instructor/login`에서 강사로 로그인해 수업을 만든다. 학생은 `/join`에서 수업 코드, 이름, PIN으로 입장해 "IDE 열기"를 누른다. IDE 왼쪽의 "실습 도우미"에 환경 상태 "정상"이 나온다.
+- `/instructor/login`에서 강사로 로그인해 수업을 만든다. 학생은 `/join`에서 수업 코드, 이름, PIN으로 입장한다. 실습 화면 안에 IDE가 뜨고, 학생이 IDE 비밀번호를 한 번 붙여 넣어 로그인한다. IDE 왼쪽의 "실습 도우미"에 환경 상태 "정상"이 나온다.
+- HTTPS에서만 생기는 조합을 본다. 브라우저 개발자 도구에서 확인한다.
+  - IDE iframe이 같은 출처의 `/ide/<포트>/`로 뜬다(다른 포트의 주소가 아니다).
+  - 그 iframe 안에서 로그인한 뒤 "실습 도우미" 패널이 흰 화면이 아니라 정상으로 그려진다.
+  - 강사 로그인 응답의 `Set-Cookie`에서 `JSESSIONID`와 `XSRF-TOKEN`에 `Secure`가 붙어 있다.
+  - `/ide/*` 요청의 `Cookie` 헤더에 `JSESSIONID`, `XSRF-TOKEN`이 없다(`code-server-session` 같은 다른 쿠키는 있다).
 - 학생 컨테이너 안에서 메타데이터가 막혔는지 본다.
 
 ```sh
@@ -130,6 +135,16 @@ sg docker -c "docker exec -u coder $C curl -s -m 4 -o /dev/null -w '%{http_code}
 ## 코드를 바꾼 뒤 다시 배포
 
 - 서버나 화면(`web/`) 코드가 바뀌었으면: `./gradlew bootJar`로 jar를 만들어 올리고 `sudo systemctl restart swunion-lab`.
+- `deploy/Caddyfile`이 바뀌었으면 jar와 따로 Caddy 설정도 갱신한다. 빠뜨리면 강사 세션 쿠키가 학생 컨테이너로 넘어간다.
+
+  ```sh
+  # 파일의 your-name.duckdns.org를 실제 도메인으로 바꾼 뒤
+  sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+  sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  sudo systemctl reload caddy
+  ```
+
+  `/ide/*`의 쿠키 제거는 Caddy 버전에 따라 다르게 읽힐 수 있다. `caddy version`을 확인하고, `caddy adapt --config /etc/caddy/Caddyfile`의 `reverse_proxy` 아래 `headers.request.replace.Cookie`에 `JSESSIONID`용과 `XSRF-TOKEN`용 `search_regexp`가 두 개 들어 있는지 본다. 7번 확인 절의 쿠키 항목으로 실제 요청도 확인한다.
 - `docker/lab-base`가 바뀌었으면: 폴더를 올리고 4번처럼 기본 이미지를 다시 빌드한다. 수업 이미지는 수업을 만들 때 굳어지므로, 새로 만드는 수업부터 적용된다.
 
 ## 서버 비우기
