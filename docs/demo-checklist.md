@@ -10,10 +10,11 @@
 4. jq: `jq --version`. 아래 시연 순서의 명령 몇 개가 jq를 쓴다.
 5. 기본 이미지: `./scripts/build-base-image.sh`를 한 번 실행한다. `docker images swunion/lab-base:1`에 이미지가 보이면 된다. 이 이미지가 없으면 수업 발급이 FAILED로 끝난다.
 6. API 키: 프로젝트 루트의 `.env`에 `ANTHROPIC_API_KEY=<키>` 한 줄을 둔다. 환경변수로 줘도 된다. 철자가 틀린 `ANTROPHIC_API_KEY`도 읽는다. 키가 없으면 에이전트 실행마다 "LLM 응답 실패"로 강사에게 넘어간다.
+7. Node 20.9 이상과 pnpm: `node -v`, `pnpm -v`. `./gradlew bootJar`가 `web/`의 화면을 빌드해 jar에 넣는다.
 
 ### 설정
 
-- `INSTRUCTOR_PASSWORD`(기본 `instructor`): 학생 컨테이너는 `host.docker.internal:8080`으로 이 서버에 닿는다. 기본 비밀번호를 두면 학생이 IDE 터미널에서 강사 API를 부를 수 있다. 학생에게 IDE를 주기 전에 바꾼다. 기본값으로 켜면 서버가 시작할 때 WARN 로그를 남긴다. 바꿨다면 아래 curl 명령의 `instructor:instructor`도 `instructor:<새 비밀번호>`로 고친다.
+- `INSTRUCTOR_PASSWORD`(기본 `instructor`): 학생 컨테이너는 `host.docker.internal:8080`으로 이 서버에 닿는다. 기본 비밀번호를 두면 학생이 IDE 터미널에서 강사 API를 부를 수 있다. 학생에게 IDE를 주기 전에 바꾼다. 기본값으로 켜면 서버가 시작할 때 WARN 로그를 남긴다. 바꿨다면 아래 시연 순서의 강사 로그인 명령에 새 비밀번호를 넣는다.
 - `LLM_MODEL`(기본 `claude-haiku-5-5`): 서버는 id가 `claude-haiku-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`로 시작하는 모델에만 `output_config.effort=low`를 보낸다. 다른 모델을 쓰면 effort 없이 그 모델의 기본값으로 호출한다.
 - 수업 패키지: 서버는 `uv lock --no-build`로 lock 파일을 만든다. 서버 PC에서 패키지의 빌드 코드를 돌리지 않으려는 설정이다. 그래서 휠 없이 소스 배포본(sdist)만 있는 패키지를 넣으면 수업이 FAILED가 되고, 강사 화면의 오류 요약에 uv 오류가 그대로 나온다. 휠이 있는 버전으로 바꿔 다시 만든다.
 
@@ -25,11 +26,12 @@
 - `IDE_BIND_ADDRESS=0.0.0.0`: 기본값 `127.0.0.1`이면 학생 IDE 포트가 서버 PC 밖으로 열리지 않는다.
 
 ```sh
+./gradlew bootJar
 PUBLIC_BASE_URL=http://<서버 PC의 LAN 주소>:8080 IDE_BIND_ADDRESS=0.0.0.0 \
-  INSTRUCTOR_PASSWORD='<새 비밀번호>' ./gradlew bootRun
+  INSTRUCTOR_PASSWORD='<새 비밀번호>' java -jar build/libs/lab-0.0.1-SNAPSHOT.jar
 ```
 
-학생은 `http://<서버 PC의 LAN 주소>:8080/join.html`로 들어온다.
+학생은 `http://<서버 PC의 LAN 주소>:8080/join`으로 들어오고, 수업 코드와 이름, PIN을 넣는다. 강사는 `/instructor`에서 로그인한다.
 
 ## 실행 기록
 
@@ -160,30 +162,40 @@ PUBLIC_BASE_URL=http://<서버 PC의 LAN 주소>:8080 IDE_BIND_ADDRESS=0.0.0.0 \
 
 ## 시연 순서
 
-비밀번호, 토큰, 입장 코드는 실행 결과에서 읽어 `<...>` 자리에 넣는다. 노트북은 전원을 연결하고 덮개를 열어 둔다.
+비밀번호, 토큰, 수업 코드는 실행 결과에서 읽어 `<...>` 자리에 넣는다. 노트북은 전원을 연결하고 덮개를 열어 둔다.
+
+화면(`web/`)은 jar 안에 들어 있다. `./gradlew bootRun`에는 화면이 없으므로 jar로 띄운다. 화면을 고치며 볼 때는 `web/`에서 `pnpm dev`를 띄우면 `http://localhost:3000`이 서버(8080)로 API를 넘긴다.
 
 ```sh
 cd swunion
-./gradlew bootRun                     # 터미널 1. "Started LabApplication"이 나올 때까지 기다린다
+./gradlew bootJar && java -jar build/libs/lab-0.0.1-SNAPSHOT.jar   # 터미널 1. "Started LabApplication"이 나올 때까지 기다린다
 
-# 터미널 2. 수업 발급 (READY까지 약 17초)
-curl -s -u instructor:instructor -H 'Content-Type: application/json' \
+# 터미널 2. 강사 로그인. 세션 쿠키와 CSRF 쿠키를 파일에 두고, ic 함수가 요청마다 CSRF 헤더를 붙인다.
+# 브라우저는 http://localhost:8080/instructor/login 에서 같은 계정으로 로그인한다.
+J=/tmp/swunion-instructor.jar; rm -f $J
+ic() { curl -s -b $J -c $J -H "X-XSRF-TOKEN: $(awk '$6=="XSRF-TOKEN"{print $7}' $J)" "$@"; }
+curl -s -c $J -o /dev/null http://localhost:8080/instructor/login   # CSRF 쿠키를 받는다
+ic -X POST -d username=instructor --data-urlencode 'password=<강사 비밀번호>' \
+  -w '%{http_code}\n' http://localhost:8080/api/auth/login      # 204
+
+# 수업 발급 (READY까지 약 17초)
+ic -H 'Content-Type: application/json' \
   -X POST http://localhost:8080/api/courses \
   -d '{"name":"시연 수업","pythonVersion":"3.12","packages":"requests\nrich"}'
-curl -s -u instructor:instructor http://localhost:8080/api/courses/<수업ID>   # status, entryCode 확인
+ic http://localhost:8080/api/courses/<수업ID>   # status, entryCode(수업 코드) 확인
 
-# 학생 두 명 입장 (브라우저면 http://localhost:8080/join.html)
+# 학생 두 명 입장 (브라우저면 http://localhost:8080/join)
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/join \
-  -d '{"entryCode":"<입장코드>","name":"학생A","pin":"1234"}'
+  -d '{"entryCode":"<수업 코드>","name":"학생A","pin":"1234"}'
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/join \
-  -d '{"entryCode":"<입장코드>","name":"학생B","pin":"5678"}'
+  -d '{"entryCode":"<수업 코드>","name":"학생B","pin":"5678"}'
 
 # 화면
-#   학생: http://localhost:8080/student.html?t=<토큰>   (일반 창과 시크릿 창에 하나씩)
-#   강사: http://localhost:8080/dashboard.html?course=<수업ID>
+#   학생: http://localhost:8080/lab?t=<토큰>   (일반 창과 시크릿 창에 하나씩)
+#   강사: http://localhost:8080/instructor/course?id=<수업ID>   (로그인 필요)
 
 # 학생 컨테이너 찾기 (sessionId는 대시보드 JSON에 있다)
-curl -s -u instructor:instructor http://localhost:8080/api/courses/<수업ID>/dashboard | jq '.students[] | {sessionId,name}'
+ic http://localhost:8080/api/courses/<수업ID>/dashboard | jq '.students[] | {sessionId,name}'
 docker ps --filter label=swunion.session=<sessionId>
 
 # 목표 2: 학생 터미널
@@ -222,7 +234,7 @@ curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/s/
 curl -s -o code.zip http://localhost:8080/l/<토큰>/code.zip && unzip -l code.zip
 
 # 수업 종료: 컨테이너는 멈추고 볼륨은 남는다
-curl -s -u instructor:instructor -X POST http://localhost:8080/api/courses/<수업ID>/end
+ic -X POST http://localhost:8080/api/courses/<수업ID>/end
 #   종료한 수업에 다시 보내도 된다. 남은 컨테이너를 다시 멈추고 200과 개수를 돌려준다.
 #   대시보드의 종료 버튼은 종료 뒤 꺼지므로 이 명령을 쓴다.
 docker ps -a --filter label=swunion.course=<수업ID>
@@ -332,15 +344,15 @@ docker volume ls | grep swunion
 
 ### 시연 순서
 
-입장에는 PIN이 필요하다. PIN이 없거나 숫자 4자리가 아니면 서버가 400("PIN은 숫자 4자리로 입력해 주세요.")을 돌려준다. 위 "시연 순서"의 입장 명령에도 `"pin"`을 넣어 두었다.
+아래 명령의 `ic`와 로그인은 위 "시연 순서"의 것을 그대로 쓴다. 입장에는 PIN이 필요하다. PIN이 없거나 숫자 4자리가 아니면 서버가 400("PIN은 숫자 4자리로 입력해 주세요.")을 돌려준다. 위 "시연 순서"의 입장 명령에도 `"pin"`을 넣어 두었다.
 
 ```sh
 # 학생 입장. 처음이면 201 resumed:false
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/join \
-  -d '{"entryCode":"<입장코드>","name":"학생A","pin":"<숫자 4자리>"}'
+  -d '{"entryCode":"<수업 코드>","name":"학생A","pin":"<숫자 4자리>"}'
 
 # 목표 1: 되찾기
-#   학생 탭을 닫고 다른 브라우저(시크릿 창)의 join.html에 같은 코드, 이름, PIN을 넣는다.
+#   학생 탭을 닫고 다른 브라우저(시크릿 창)의 `/join`에 같은 수업 코드, 이름, PIN을 넣는다.
 #   같은 요청을 curl로 보내면 200 resumed:true와 새 토큰이 온다. 예전 토큰은 404가 된다.
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/s/<예전 토큰>
 #   파일이 이어지는지: 되찾기 전에 쓰고 뒤에 읽는다
@@ -351,23 +363,23 @@ docker rm -f <A컨테이너>
 #   틀린 PIN 다섯 번이면 여섯 번째부터 5분 동안 429
 
 # 목표 2: PIN 초기화 (대시보드 학생 행의 "PIN 초기화"와 같다). 204가 나오면 학생이 새 PIN으로 입장한다
-curl -s -o /dev/null -w '%{http_code}\n' -u instructor:instructor -X POST \
+ic -o /dev/null -w '%{http_code}\n' -X POST \
   http://localhost:8080/api/courses/<수업ID>/sessions/<sessionId>/reset-pin
 
 # 목표 5: 학생 한 명 재시작과 삭제 (대시보드의 "재시작", 두 번 누르는 "삭제"와 같다)
-curl -s -u instructor:instructor -X POST \
+ic -X POST \
   http://localhost:8080/api/courses/<수업ID>/sessions/<sessionId>/restart        # {"ok":true}
-curl -s -u instructor:instructor -H 'Content-Type: application/json' -X DELETE \
+ic -H 'Content-Type: application/json' -X DELETE \
   http://localhost:8080/api/courses/<수업ID>/sessions/<sessionId> -d '{}'
 
 # 목표 3: 종료 뒤 재개 (대시보드의 "수업 종료" 두 번, "수업 재개"와 같다)
-curl -s -u instructor:instructor -X POST http://localhost:8080/api/courses/<수업ID>/end
-curl -s -u instructor:instructor -X POST http://localhost:8080/api/courses/<수업ID>/resume
+ic -X POST http://localhost:8080/api/courses/<수업ID>/end
+ic -X POST http://localhost:8080/api/courses/<수업ID>/resume
 #   {"started":1,"unhealthy":0,"recreatedEmpty":0,"failed":0}이 오고 수업은 READY
 
 # 목표 4: 종료 뒤 삭제. 이름이 한 글자라도 다르면 400 (대시보드에서는 버튼이 꺼져 있다)
-curl -s -u instructor:instructor -X POST http://localhost:8080/api/courses/<수업ID>/end
-curl -s -u instructor:instructor -H 'Content-Type: application/json' -X DELETE \
+ic -X POST http://localhost:8080/api/courses/<수업ID>/end
+ic -H 'Content-Type: application/json' -X DELETE \
   http://localhost:8080/api/courses/<수업ID> -d '{"confirmName":"<수업 이름 그대로>"}'
 docker ps -a --filter label=swunion.course=<수업ID>   # 비어 있어야 한다
 docker volume ls | grep <지운 학생의 볼륨 이름>         # 비어 있어야 한다
