@@ -9,6 +9,9 @@
   h1 { font-size: 1.4em; }
   h2 { font-size: 1.1em; margin-top: 1.6em; }
   button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  td.actions button { display: block; margin: 0 0 4px; }
+  #deleteConfirm { font: inherit; padding: 4px 6px; width: 24em; max-width: 100%; box-sizing: border-box; }
   table { border-collapse: collapse; width: 100%; }
   th, td { border: 1px solid #bbb; padding: 4px 8px; text-align: left; vertical-align: top; }
   th { background: #eee; }
@@ -46,7 +49,27 @@
 </p>
 <p class="muted small">컨테이너만 멈추고 학생 볼륨(코드)은 남습니다. 한 번 누르면 확인 상태가 되고, 5초 안에 한 번 더 누르면 종료합니다.</p>
 
+<h2>수업 재개</h2>
+<p>
+  <button type="button" id="resumeBtn" disabled>수업 재개</button>
+  <span id="resumeMsg" role="status" class="wrap"></span>
+</p>
+<p class="muted small">종료된 수업만 다시 엽니다. 학생 컨테이너를 켜고 IDE가 응답할 때까지 기다리므로 최대 1분쯤 걸립니다. 학생 코드는 그대로 이어집니다.</p>
+
+<h2>수업 삭제</h2>
+<p class="muted small">종료됐거나 발급에 실패한 수업만 지울 수 있습니다. 학생 컨테이너와 볼륨(코드), 수업 이미지, 서버 작업 폴더, 모든 기록이 지워지고 되돌릴 수 없습니다.</p>
+<p>
+  <label for="deleteConfirm">지우려면 수업 이름 <strong id="deleteTarget" class="wrap"></strong> 을 그대로 입력하세요.</label><br>
+  <input type="text" id="deleteConfirm" autocomplete="off" spellcheck="false">
+  <button type="button" id="deleteBtn" disabled>수업 삭제</button>
+</p>
+<p id="deleteMsg" role="status" class="wrap"></p>
+<ul id="deleteFailures" class="mono"></ul>
+<p id="deleteDone" hidden><a id="backLink" href="instructor.html">목록으로</a></p>
+
 <h2>학생 <span id="studentCount" class="muted small"></span></h2>
+<p id="studentMsg" role="status" class="wrap"></p>
+<ul id="studentFailures" class="mono"></ul>
 <table id="students">
   <thead>
     <tr>
@@ -56,6 +79,7 @@
       <th>로컬 설치</th>
       <th>에이전트 조치 (최근 5건)</th>
       <th>강사 도움 필요</th>
+      <th>관리</th>
     </tr>
   </thead>
   <tbody id="studentRows"></tbody>
@@ -112,6 +136,24 @@ function errorText(r) {
 
 function str(v) { return v == null ? '' : String(v); }
 
+function setMsg(el, text, cls) {
+  el.textContent = text;
+  el.className = cls || '';
+}
+
+// 지우지 못한 자원 이름 목록. 강사가 직접 치울 수 있게 서버가 준 이름을 텍스트로 그대로 보여 준다.
+function fillFailures(ul, failures) {
+  const items = [];
+  if (Array.isArray(failures)) {
+    for (const f of failures) items.push(h('li', { class: 'wrap' }, str(f)));
+  }
+  ul.replaceChildren(...items);
+}
+
+function deleteSummary(d) {
+  return '컨테이너 ' + str(d.removedContainers) + '개, 볼륨 ' + str(d.removedVolumes) + '개를 지웠습니다.';
+}
+
 function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -155,12 +197,24 @@ function renderCourse(c) {
   }
   document.getElementById('courseInfo').replaceChildren(...nodes);
   document.getElementById('courseError').textContent = c.errorSummary ? '오류 요약: ' + c.errorSummary : '';
+  courseName = c.name == null ? null : String(c.name);
+  courseStatus = str(c.status);
+  document.getElementById('deleteTarget').textContent = str(c.name);
   updateEndButton(c.status);
+  updateCourseActions();
 }
 
 // ---- 학생 표 ----
 
 const resolving = new Set();
+// 수업 상태와 이름. 학생 표의 재시작 버튼과 수업 삭제 입력칸이 읽는다.
+let courseName = null;
+let courseStatus = null;
+// 학생 한 명에 대한 요청이 진행 중인 동안의 종류(restart, reset-pin, delete). 표가 다시 그려져도 버튼을 잠근 채 유지한다.
+const rowBusy = new Map();
+// 삭제 버튼을 한 번 누른 학생과 확인 시간 제한 타이머.
+const armedDelete = new Map();
+let lastStudents = [];
 
 function cell(cls) {
   const td = document.createElement('td');
@@ -268,24 +322,134 @@ function helpCell(s) {
   return td;
 }
 
+function nameCell(s) {
+  const td = cell('wrap', h('strong', null, str(s.name)));
+  // PIN 값이나 해시는 서버가 주지 않는다. 정해져 있는지만 보인다.
+  td.appendChild(s.pinSet === true
+    ? h('div', { class: 'muted small' }, 'PIN 설정됨')
+    : h('div', { class: 'warn small' }, 'PIN 미설정'));
+  return td;
+}
+
+// 학생 한 명을 관리하는 버튼들. 요청이 진행 중이면 그 학생의 버튼을 모두 잠근다.
+function manageCell(s) {
+  const td = cell('actions');
+  const sid = s.sessionId;
+  const busyKind = rowBusy.get(sid);
+  const locked = busyKind !== undefined || deleting || courseDeleted;
+
+  const restart = h('button', { type: 'button', 'data-action': 'restart' },
+    busyKind === 'restart' ? '재시작하는 중...' : '재시작');
+  restart.disabled = locked || courseStatus !== 'READY';
+  if (courseStatus !== 'READY') restart.setAttribute('title', '진행 중인 수업에서만 재시작할 수 있습니다');
+  restart.addEventListener('click', function () { studentAction(s, 'restart'); });
+
+  const reset = h('button', { type: 'button', 'data-action': 'reset-pin' },
+    busyKind === 'reset-pin' ? '초기화하는 중...' : 'PIN 초기화');
+  reset.disabled = locked;
+  reset.addEventListener('click', function () { studentAction(s, 'reset-pin'); });
+
+  const del = h('button', { type: 'button', 'data-action': 'delete' },
+    busyKind === 'delete' ? '삭제하는 중...' : (armedDelete.has(sid) ? '정말 삭제합니까? 한 번 더 누르세요' : '삭제'));
+  del.disabled = locked;
+  del.addEventListener('click', function () { studentAction(s, 'delete'); });
+
+  td.appendChild(restart);
+  td.appendChild(reset);
+  td.appendChild(del);
+  return td;
+}
+
 function renderStudents(students) {
+  lastStudents = students;
   document.getElementById('studentCount').textContent = '(' + students.length + '명)';
   const rows = [];
   for (const s of students) {
     const tr = h('tr', { class: s.needsHelp ? 'help' : '' });
     tr.setAttribute('data-session-id', String(s.sessionId));
-    tr.appendChild(cell('wrap', h('strong', null, str(s.name))));
+    tr.appendChild(nameCell(s));
     tr.appendChild(connectCell(s));
     tr.appendChild(envCell(s));
     tr.appendChild(localCell(s));
     tr.appendChild(actionsCell(s));
     tr.appendChild(helpCell(s));
+    tr.appendChild(manageCell(s));
     rows.push(tr);
   }
   if (rows.length === 0) {
-    rows.push(h('tr', null, h('td', { colspan: '6', class: 'muted' }, '아직 입장한 학생이 없습니다.')));
+    rows.push(h('tr', null, h('td', { colspan: '7', class: 'muted' }, '아직 입장한 학생이 없습니다.')));
   }
   document.getElementById('studentRows').replaceChildren(...rows);
+}
+
+// ---- 학생 관리: 재시작, PIN 초기화, 삭제(두 번 누르기) ----
+
+const studentMsg = document.getElementById('studentMsg');
+const studentFailures = document.getElementById('studentFailures');
+
+function disarmDelete(sid) {
+  if (armedDelete.has(sid)) {
+    clearTimeout(armedDelete.get(sid));
+    armedDelete.delete(sid);
+  }
+}
+
+async function studentAction(s, kind) {
+  const sid = s.sessionId;
+  if (rowBusy.has(sid) || deleting || courseDeleted) return;
+  if (kind === 'delete' && !armedDelete.has(sid)) {
+    // 첫 번째 누름: 확인 상태로만 바꾸고 5초 안에 다시 누르지 않으면 되돌린다.
+    armedDelete.set(sid, setTimeout(function () {
+      armedDelete.delete(sid);
+      renderStudents(lastStudents);
+    }, 5000));
+    setMsg(studentMsg, '', '');
+    fillFailures(studentFailures, []);
+    renderStudents(lastStudents);
+    return;
+  }
+  disarmDelete(sid);
+  rowBusy.set(sid, kind);
+  setMsg(studentMsg, '', '');
+  fillFailures(studentFailures, []);
+  renderStudents(lastStudents);
+  const who = str(s.name) + ': ';
+  const path = BASE + '/sessions/' + encodeURIComponent(String(sid));
+  try {
+    let r;
+    if (kind === 'restart') {
+      setMsg(studentMsg, who + '컨테이너를 다시 켜는 중입니다 (최대 1분)...', 'muted');
+      r = await api('POST', path + '/restart');
+    } else if (kind === 'reset-pin') {
+      r = await api('POST', path + '/reset-pin');
+    } else {
+      setMsg(studentMsg, who + '삭제하는 중입니다...', 'muted');
+      // 본문은 쓰지 않지만 삭제 요청은 모두 JSON 형식으로 보낸다.
+      r = await api('DELETE', path, {});
+    }
+    if (!r.ok) {
+      setMsg(studentMsg, who + errorText(r), 'err');
+    } else if (kind === 'restart') {
+      if (r.data && r.data.ok === true) setMsg(studentMsg, who + '재시작했습니다. IDE가 응답합니다.', 'ok');
+      else setMsg(studentMsg, who + '컨테이너를 켜지 못했거나 IDE가 1분 안에 응답하지 않았습니다.', 'warn');
+    } else if (kind === 'reset-pin') {
+      setMsg(studentMsg, who + 'PIN을 초기화했습니다. 학생이 같은 이름으로 다시 입장하면 새 PIN을 정합니다.', 'ok');
+    } else {
+      const d = r.data || {};
+      const failed = Array.isArray(d.failures) ? d.failures : [];
+      setMsg(studentMsg, who + '삭제했습니다. ' + deleteSummary(d)
+        + (failed.length > 0 ? ' 지우지 못한 자원 ' + failed.length + '개는 직접 치워야 합니다:' : ''),
+        failed.length > 0 ? 'warn' : 'ok');
+      fillFailures(studentFailures, failed);
+    }
+  } catch (e) {
+    setMsg(studentMsg, who + '서버에 연결하지 못했습니다.', 'err');
+  } finally {
+    rowBusy.delete(sid);
+    renderStudents(lastStudents);
+    lastSig = null;
+    refresh();
+  }
 }
 
 function renderErrors(errors, note) {
@@ -333,6 +497,7 @@ endBtn.addEventListener('click', async function () {
   disarm();
   ending = true;
   endBtn.disabled = true;
+  updateCourseActions();
   endMsg.textContent = '종료하는 중...';
   endMsg.className = 'muted';
   try {
@@ -349,8 +514,98 @@ endBtn.addEventListener('click', async function () {
     endMsg.className = 'err';
   } finally {
     ending = false;
+    updateCourseActions();
     lastSig = null;
     refresh();
+  }
+});
+
+// ---- 수업 재개, 삭제 ----
+
+const resumeBtn = document.getElementById('resumeBtn');
+const resumeMsg = document.getElementById('resumeMsg');
+const deleteConfirm = document.getElementById('deleteConfirm');
+const deleteBtn = document.getElementById('deleteBtn');
+const deleteMsg = document.getElementById('deleteMsg');
+let resuming = false;
+let deleting = false;
+let courseDeleted = false;
+
+// 재개는 ENDED, 삭제는 ENDED·FAILED일 때만 켠다. 삭제는 입력한 이름이 수업 이름과 정확히 같을 때만 켠다.
+function updateCourseActions() {
+  const busy = resuming || deleting || ending || courseDeleted;
+  resumeBtn.disabled = busy || courseStatus !== 'ENDED';
+  const deletable = courseStatus === 'ENDED' || courseStatus === 'FAILED';
+  deleteConfirm.disabled = deleting || courseDeleted;
+  deleteBtn.disabled = busy || !deletable || courseName === null || deleteConfirm.value !== courseName;
+}
+
+deleteConfirm.addEventListener('input', updateCourseActions);
+
+resumeBtn.addEventListener('click', async function () {
+  if (resumeBtn.disabled || resuming) return;
+  resuming = true;
+  updateCourseActions();
+  setMsg(resumeMsg, '재개하는 중입니다. 학생 컨테이너를 켜고 IDE 응답을 기다립니다 (최대 1분)...', 'muted');
+  try {
+    const r = await api('POST', BASE + '/resume');
+    if (r.ok && r.data) {
+      const d = r.data;
+      const trouble = Number(d.unhealthy) + Number(d.recreatedEmpty) + Number(d.failed) > 0;
+      setMsg(resumeMsg, '수업을 재개했습니다. 켜진 학생 ' + str(d.started) + '명, IDE 응답 없음 ' + str(d.unhealthy)
+        + '명, 빈 작업 공간으로 새로 만든 학생 ' + str(d.recreatedEmpty) + '명, 켜지 못한 학생 ' + str(d.failed) + '명.'
+        + (Number(d.recreatedEmpty) > 0 ? ' 빈 작업 공간 학생은 표의 "강사 도움 필요"에 표시됩니다.' : ''),
+        trouble ? 'warn' : 'ok');
+    } else {
+      setMsg(resumeMsg, errorText(r), 'err');
+    }
+  } catch (e) {
+    setMsg(resumeMsg, '서버에 연결하지 못했습니다.', 'err');
+  } finally {
+    resuming = false;
+    updateCourseActions();
+    lastSig = null;
+    refresh();
+  }
+});
+
+deleteBtn.addEventListener('click', async function () {
+  if (deleteBtn.disabled || deleting) return;
+  const typed = deleteConfirm.value;
+  if (typed !== courseName) { updateCourseActions(); return; }
+  deleting = true;
+  updateCourseActions();
+  renderStudents(lastStudents);
+  setMsg(deleteMsg, '삭제하는 중입니다. 컨테이너, 볼륨, 이미지를 지우는 데 시간이 걸릴 수 있습니다...', 'muted');
+  fillFailures(document.getElementById('deleteFailures'), []);
+  try {
+    const r = await api('DELETE', BASE, { confirmName: typed });
+    if (r.ok && r.data) {
+      // 수업 행이 없어졌으니 더 조회하지 않는다(조회하면 404 오류가 뜬다).
+      courseDeleted = true;
+      stopped = true;
+      clearTimeout(timer);
+      timer = null;
+      const failed = Array.isArray(r.data.failures) ? r.data.failures : [];
+      setMsg(deleteMsg, '수업을 삭제했습니다. ' + deleteSummary(r.data)
+        + (failed.length > 0 ? ' 지우지 못한 자원 ' + failed.length + '개는 직접 치워야 합니다:' : ''),
+        failed.length > 0 ? 'warn' : 'ok');
+      fillFailures(document.getElementById('deleteFailures'), failed);
+      document.getElementById('deleteDone').hidden = false;
+      setMsg(statusLine, '삭제된 수업이라 갱신을 멈췄습니다.', 'muted');
+      // 못 지운 자원이 있으면 강사가 이름을 읽을 수 있게 머무른다.
+      if (failed.length === 0) {
+        setTimeout(function () { location.href = 'instructor.html'; }, 3000);
+      }
+    } else {
+      setMsg(deleteMsg, errorText(r), 'err');
+    }
+  } catch (e) {
+    setMsg(deleteMsg, '서버에 연결하지 못했습니다.', 'err');
+  } finally {
+    deleting = false;
+    updateCourseActions();
+    renderStudents(lastStudents);
   }
 });
 
@@ -381,6 +636,7 @@ async function refresh() {
   pending = true;
   try {
     const r = await api('GET', BASE + '/dashboard');
+    if (courseDeleted) return; // 삭제가 끝난 뒤 도착한 응답은 그리지 않는다.
     if (r.ok && r.data && r.data.course) {
       fails = 0;
       statusLine.textContent = '3초마다 갱신 중 · 마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR');
@@ -393,6 +649,10 @@ async function refresh() {
         renderStudents(Array.isArray(r.data.students) ? r.data.students : []);
         renderErrors(r.data.repeatedErrors, r.data.repeatedErrorsNote);
       }
+    } else if (r.status === 404 && deleting) {
+      // 삭제 응답이 오기 전에 수업 행이 먼저 사라진 것이다. 결과는 삭제 응답이 알려 준다.
+      stopped = true;
+      setMsg(statusLine, '수업을 삭제하는 중입니다.', 'muted');
     } else if (r.status === 404) {
       stopped = true;
       statusLine.textContent = '수업을 찾을 수 없습니다. 수업 목록에서 다시 열어 주세요.';

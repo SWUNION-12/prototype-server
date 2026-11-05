@@ -8,21 +8,29 @@
   body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; max-width: 480px; margin: 2em auto; padding: 0 1em; line-height: 1.45; }
   h1 { font-size: 1.4em; }
   label { display: block; margin: 0.8em 0 0.2em; font-weight: bold; }
-  input[type=text] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
+  input[type=text], input[type=password] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
+  #pin { width: 8em; letter-spacing: 0.3em; }
   button { font: inherit; padding: 6px 16px; cursor: pointer; margin-top: 1em; }
   .err { color: #b00020; white-space: pre-wrap; }
   .muted { color: #666; }
+  .small { font-size: 0.85em; margin-top: 0.2em; }
+  label.inline { display: inline-block; margin: 0.4em 0 0; font-weight: normal; }
 </style>
 </head>
 <body>
 <h1>수업 입장</h1>
-<p class="muted">강사에게 받은 입장 코드와 이름을 입력하세요.</p>
+<p class="muted">강사에게 받은 입장 코드와 이름, PIN을 입력하세요.</p>
 <form id="joinForm">
   <label for="code">입장 코드</label>
   <input type="text" id="code" autocomplete="off" autocapitalize="characters" required>
 
   <label for="name">이름</label>
   <input type="text" id="name" autocomplete="off" maxlength="40" required>
+
+  <label for="pin">PIN (숫자 4자리)</label>
+  <input type="password" id="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-describedby="pinHelp">
+  <label class="inline"><input type="checkbox" id="showPin"> PIN 보이기</label>
+  <p id="pinHelp" class="muted small">처음 입장하면 PIN을 새로 정하고, 다시 들어올 때는 처음 정한 PIN을 입력하세요.</p>
 
   <button type="submit" id="joinBtn">입장</button>
 </form>
@@ -46,10 +54,28 @@ async function api(method, url, body) {
   return { ok: res.ok, status: res.status, data: data };
 }
 
+// 처음 정하는 PIN은 확인 칸이 없어서, 가려 둔 채로 잘못 치면 본인도 모르는 PIN이 된다. 필요할 때 볼 수 있게 한다.
+document.getElementById('showPin').addEventListener('change', function (ev) {
+  document.getElementById('pin').type = ev.target.checked ? 'text' : 'password';
+});
+
+// 요청이 끝나기 전에 다시 보내면 토큰이 두 번 새로 발급되어 먼저 받은 화면이 404가 된다.
+let joining = false;
+
 document.getElementById('joinForm').addEventListener('submit', async function (ev) {
   ev.preventDefault();
+  if (joining) return;
   const btn = document.getElementById('joinBtn');
   const msg = document.getElementById('msg');
+  const pinEl = document.getElementById('pin');
+  const pin = pinEl.value.trim();
+  if (!/^[0-9]{4}$/.test(pin)) {
+    msg.textContent = 'PIN은 숫자 4자리여야 합니다.';
+    msg.className = 'err';
+    pinEl.focus();
+    return;
+  }
+  joining = true;
   btn.disabled = true;
   // 컨테이너를 만들고 IDE가 응답할 때까지 기다리므로 시간이 걸린다.
   msg.textContent = '입장하는 중입니다. 클라우드 환경을 만드는 데 시간이 걸릴 수 있습니다...';
@@ -57,20 +83,28 @@ document.getElementById('joinForm').addEventListener('submit', async function (e
   try {
     const r = await api('POST', '/api/join', {
       entryCode: document.getElementById('code').value.trim(),
-      name: document.getElementById('name').value.trim()
+      name: document.getElementById('name').value.trim(),
+      pin: pin
     });
     if (r.ok && r.data && typeof r.data.token === 'string' && r.data.token) {
-      location.href = 'student.html?t=' + encodeURIComponent(r.data.token);
+      // 되찾은 입장이면 학생 화면이 한 번 알려 준다. 이동하는 동안 버튼은 계속 잠가 둔다.
+      location.href = 'student.html?t=' + encodeURIComponent(r.data.token) + (r.data.resumed === true ? '&resumed=1' : '');
       return;
     }
     msg.textContent = (r.data && typeof r.data.error === 'string' && r.data.error)
       ? r.data.error
       : '입장하지 못했습니다 (HTTP ' + r.status + ').';
     msg.className = 'err';
+    if (r.status === 403) {
+      // 틀린 PIN을 그대로 두면 같은 값으로 다시 눌러 실패 횟수만 쌓는다.
+      pinEl.value = '';
+      pinEl.focus();
+    }
   } catch (e) {
     msg.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     msg.className = 'err';
   }
+  joining = false;
   btn.disabled = false;
 });
 </script>

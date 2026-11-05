@@ -28,6 +28,9 @@
 <body>
 <h1 id="title">내 실습 환경</h1>
 <p id="who" class="muted"></p>
+<p id="reentryNote" class="box small">다시 들어올 때는 입장 코드, 이름, PIN이 필요합니다.</p>
+<p id="resumedNote" class="ok" role="status" hidden>이전 세션으로 돌아왔습니다.</p>
+<p id="workspaceLostNote" class="warn" role="status" hidden>이전 작업 공간을 찾지 못해 새로 만들었습니다.</p>
 <p id="statusLine" role="status" class="muted">불러오는 중...</p>
 
 <!-- 클라우드 IDE -->
@@ -206,9 +209,19 @@ async function copyText(text, btn, node) {
 
 // ---- 토큰 ----
 
-const token = new URLSearchParams(location.search).get('t');
+const query = new URLSearchParams(location.search);
+const token = query.get('t');
 const API = token ? '/api/s/' + encodeURIComponent(token) : null;
 const statusLine = $('statusLine');
+
+// 입장 화면에서 이전 세션을 되찾아 왔을 때만 한 번 알린다. 새로고침해도 다시 뜨지 않게 주소에서 지운다.
+if (query.get('resumed') === '1') {
+  $('resumedNote').hidden = false;
+  try {
+    query.delete('resumed');
+    history.replaceState(null, '', location.pathname + '?' + query.toString() + location.hash);
+  } catch (e) { /* 주소를 못 바꿔도 안내는 이미 보였다 */ }
+}
 
 // ---- 상태 표시 ----
 
@@ -258,6 +271,8 @@ function renderMe(me) {
   $('issues').replaceChildren(...items);
 
   $('needsHelpNote').hidden = !me.needsHelp;
+  // 볼륨이 사라져 빈 작업 공간으로 다시 만든 경우. 값이 바뀌면 안내도 따라 사라진다.
+  $('workspaceLostNote').hidden = me.workspaceLost !== true;
   renderLatestHelp(me.latestHelp);
 }
 
@@ -288,6 +303,45 @@ function renderLatestHelp(hp) {
   box.replaceChildren(...nodes);
 }
 
+// ---- 더 쓸 수 없는 화면 ----
+
+// 토큰이 바뀌었거나(이름과 PIN으로 다시 들어온 경우) 세션이 지워졌다. 폴링을 멈추고, 남은 화면으로
+// IDE에 들어가거나 요청을 보내지 못하게 비밀번호와 링크를 지운다.
+let gone = false;
+
+function showGone() {
+  gone = true;
+  stopped = true;
+  clearTimeout(timer);
+  timer = null;
+  statusLine.className = 'err';
+  statusLine.replaceChildren(
+    document.createTextNode('이 화면은 더 이상 쓸 수 없습니다. 입장 화면에서 이름과 PIN으로 다시 들어오세요'),
+    document.createTextNode(' '),
+    h('a', { href: 'join.html', id: 'rejoinLink' }, '입장 화면으로 가기'));
+  $('resumedNote').hidden = true;
+  $('workspaceLostNote').hidden = true;
+  $('needsHelpNote').hidden = true;
+  $('ideLink').removeAttribute('href');
+  $('ideLink').hidden = true;
+  $('idePw').value = '';
+  $('envStatus').textContent = '-';
+  $('envStatus').className = '';
+  $('issues').replaceChildren();
+  renderLatestHelp(null);
+  resetLocal();
+  for (const id of ['copyPw', 'helpBtn', 'escalateBtn', 'installBtn', 'osSel', 'errorText']) $(id).disabled = true;
+}
+
+// 학생 API가 주는 404는 토큰이 없다는 뜻뿐이다. 어느 요청에서 받아도 같은 안내로 끝낸다.
+function handleGone(r) {
+  if (r && r.status === 404) {
+    showGone();
+    return true;
+  }
+  return false;
+}
+
 // ---- 5초 조회 ----
 
 const POLL_MS = 5000;
@@ -314,17 +368,13 @@ async function refresh() {
   pending = true;
   try {
     const r = await api('GET', API);
+    if (gone) return; // 기다리는 사이 다른 요청이 404를 받아 화면을 닫았다.
     if (r.ok && r.data) {
       fails = 0;
       setMsg(statusLine, '5초마다 갱신 중 · 마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR'), 'muted');
       renderMe(r.data);
     } else if (r.status === 404) {
-      stopped = true;
-      statusLine.className = 'err';
-      statusLine.replaceChildren(
-        document.createTextNode('입장 정보를 찾을 수 없습니다. '),
-        h('a', { href: 'join.html' }, '입장 페이지'),
-        document.createTextNode('에서 다시 입장해 주세요.'));
+      showGone();
     } else {
       fails++;
       setMsg(statusLine, '상태를 불러오지 못했습니다: ' + errorText(r) + ' (재시도 ' + fails + '회째)', 'err');
@@ -355,14 +405,14 @@ $('helpBtn').addEventListener('click', async function () {
     if (r.ok) {
       setMsg(msg, '도움을 요청했습니다. 원인을 확인하는 동안 잠시 기다려 주세요.', 'ok');
       refresh();
-    } else {
+    } else if (!handleGone(r)) {
       setMsg(msg, errorText(r), 'err');
     }
   } catch (e) {
     setMsg(msg, '서버에 연결하지 못했습니다.', 'err');
   } finally {
     helpBusy = false;
-    btn.disabled = false;
+    btn.disabled = gone;
   }
 });
 
@@ -375,13 +425,13 @@ $('escalateBtn').addEventListener('click', async function () {
     if (r.ok) {
       setMsg(msg, '강사에게 알렸습니다.', 'ok');
       refresh();
-    } else {
+    } else if (!handleGone(r)) {
       setMsg(msg, errorText(r), 'err');
     }
   } catch (e) {
     setMsg(msg, '서버에 연결하지 못했습니다.', 'err');
   } finally {
-    btn.disabled = false;
+    btn.disabled = gone;
   }
 });
 
@@ -422,7 +472,7 @@ $('installBtn').addEventListener('click', async function () {
   try {
     const r = await api('GET', API + '/local/install?os=' + encodeURIComponent(os));
     if (!r.ok || !r.data) {
-      setMsg($('localMsg'), errorText(r), 'err');
+      if (!handleGone(r)) setMsg($('localMsg'), errorText(r), 'err');
       return;
     }
     setMsg($('localMsg'), '', '');
@@ -442,7 +492,7 @@ $('installBtn').addEventListener('click', async function () {
   } catch (e) {
     setMsg($('localMsg'), '서버에 연결하지 못했습니다.', 'err');
   } finally {
-    btn.disabled = false;
+    btn.disabled = gone;
   }
 });
 
@@ -465,13 +515,13 @@ $('diagBtn').addEventListener('click', async function () {
     if (r.ok) {
       setMsg(msg, '확인했습니다. 아래 설치 명령어를 실행하세요.', 'ok');
       $('step3').hidden = false;
-    } else {
+    } else if (!handleGone(r)) {
       setMsg(msg, errorText(r), 'err');
     }
   } catch (e) {
     setMsg(msg, '서버에 연결하지 못했습니다.', 'err');
   } finally {
-    btn.disabled = false;
+    btn.disabled = gone;
   }
 });
 
@@ -498,7 +548,7 @@ $('verifyBtn').addEventListener('click', async function () {
     if (r.ok && r.data) {
       renderVerify(r.data);
       refresh();
-    } else {
+    } else if (!handleGone(r)) {
       const box = $('verifyResult');
       box.replaceChildren(h('div', { class: 'err' }, errorText(r)));
       box.hidden = false;
@@ -508,7 +558,7 @@ $('verifyBtn').addEventListener('click', async function () {
     box.replaceChildren(h('div', { class: 'err' }, '서버에 연결하지 못했습니다.'));
     box.hidden = false;
   } finally {
-    btn.disabled = false;
+    btn.disabled = gone;
   }
 });
 

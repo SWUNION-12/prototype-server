@@ -303,6 +303,21 @@ class DashboardServiceTest {
 	}
 
 	@Test
+	void pinSetReflectsHash() {
+		// 해시 값 자체는 화면에 나가지 않고, 있는지 없는지만 pinSet으로 나간다.
+		StudentSession withPin = sessions
+				.save(new StudentSession(course, "가영", "가영", "tok-pin", "pw-pin", "$2a$10$hashhashhashhashhashhu"));
+		student("나리");
+
+		assertThat(row("가영").pinSet()).isTrue();
+		assertThat(row("나리").pinSet()).as("이 기능 전에 만든 세션은 PIN이 없다").isFalse();
+
+		sessions.resetPin(withPin.getId());
+
+		assertThat(row("가영").pinSet()).as("강사가 초기화한 뒤").isFalse();
+	}
+
+	@Test
 	void unknownCourseIsEmpty() {
 		assertThat(service.dashboard(987654L)).isEmpty();
 	}

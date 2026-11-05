@@ -14,10 +14,14 @@ public record DashboardView(CourseView course, List<StudentRow> students, List<E
 			String entryCode, String errorSummary) {
 	}
 
-	/** issues는 사람이 읽는 한국어 문장, extras는 스펙에 없는 패키지 이름. */
+	/**
+	 * issues는 사람이 읽는 한국어 문장, extras는 스펙에 없는 패키지 이름. pinSet은 PIN이 정해져 있는지만 알린다
+	 * (해시는 내보내지 않는다. false면 다음 입장이 PIN을 새로 정한다).
+	 */
 	public record StudentRow(long sessionId, String name, boolean containerRunning, boolean ideConnected,
 			Instant lastSeenAt, String envStatus, List<String> issues, List<String> extras, LocalView local,
-			boolean needsHelp, String needsHelpReason, List<ActionView> recentActions, Long startupMillis) {
+			boolean needsHelp, String needsHelpReason, List<ActionView> recentActions, Long startupMillis,
+			boolean pinSet) {
 	}
 
 	/** status는 NONE(보고 없음), DIAGNOSED, OK, FAIL. */

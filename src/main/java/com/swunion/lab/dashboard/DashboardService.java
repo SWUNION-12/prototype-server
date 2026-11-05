@@ -118,7 +118,7 @@ public class DashboardService {
 		return new StudentRow(s.getId(), s.getDisplayName(), s.isContainerRunning(), s.isIdeConnected(),
 				s.getLastSeenAt(), s.getEnvStatus() == null ? null : s.getEnvStatus().name(), issues(s),
 				stringList(s.getExtrasJson()), localView(local), s.isNeedsHelp(), s.getNeedsHelpReason(), recent,
-				s.getStartupMillis());
+				s.getStartupMillis(), s.getPinHash() != null);
 	}
 
 	// ---- 환경 불일치 ----
