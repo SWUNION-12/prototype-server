@@ -94,7 +94,8 @@ export type Me = {
   courseName: string;
   courseStatus: CourseStatus;
   ideUrl: string;
-  idePassword: string;
+  // password 방식 세션에만 있다. 없으면(proxy 방식) 비밀번호 칸을 보이지 않는다.
+  idePassword?: string;
   envStatus: EnvStatus;
   // issues는 점검이 저장한 원본이라 모양을 믿지 않는다. 화면에는 서버가 풀어 준 issuesText를 쓴다.
   issues: unknown[];
@@ -109,6 +110,8 @@ export type InstallInfo = {
   installCommand: string;
   scriptUrl: string;
   zipUrl: string;
+  // 다운로드 코드가 끝나는 시각(ISO 8601). 10분 동안만 쓸 수 있다.
+  expiresAt: string;
 };
 
 export type VerifyResult = {

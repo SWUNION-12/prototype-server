@@ -142,19 +142,22 @@ export const courses = {
 
 // ---- 학생 ----
 
-const s = (token: string) => `/api/s/${encodeURIComponent(token)}`;
-
+// 학생 세션은 HttpOnly 쿠키(LAB_STUDENT)다. 화면 코드는 토큰을 보지도 저장하지도 않는다.
+// POST는 CSRF 헤더가 필요한데 쿠키는 서버의 아무 응답에서 받으므로, 첫 POST는 /api/me 조회 뒤에 보낸다.
 export const student = {
   join: (input: { entryCode: string; name: string; pin: string }) =>
-    request<{ token: string; resumed: boolean }>("POST", "/api/join", { body: input }),
-  me: (token: string) => request<Me>("GET", s(token)),
-  help: (token: string, errorText: string | null) =>
-    request<{ helpId: number }>("POST", `${s(token)}/help`, { body: { errorText } }),
-  escalate: (token: string) => request<void>("POST", `${s(token)}/escalate`),
-  installInfo: (token: string, os: Os) =>
-    request<InstallInfo>("GET", `${s(token)}/local/install?os=${os}`),
-  diagnostics: (token: string, os: Os, text: string) =>
-    request<void>("POST", `${s(token)}/local/diagnostics`, { body: { os, text } }),
-  verify: (token: string, text: string) =>
-    request<VerifyResult>("POST", `${s(token)}/local/verify`, { body: { text } }),
+    request<{ resumed: boolean }>("POST", "/api/join", { body: input }),
+  me: () => request<Me>("GET", "/api/me"),
+  logout: () => request<void>("POST", "/api/me/logout"),
+  help: (errorText: string | null) =>
+    request<{ helpId: number }>("POST", "/api/me/help", { body: { errorText } }),
+  escalate: () => request<void>("POST", "/api/me/escalate"),
+  // 터미널은 쿠키가 없어 10분짜리 다운로드 코드가 든 주소를 받는다. 부를 때마다 새로 만든다.
+  localLink: (os: Os) => request<InstallInfo>("POST", `/api/me/local/link?os=${os}`),
+  diagnostics: (os: Os, text: string) =>
+    request<void>("POST", "/api/me/local/diagnostics", { body: { os, text } }),
+  verify: (text: string) => request<VerifyResult>("POST", "/api/me/local/verify", { body: { text } }),
 };
+
+/** 화면의 코드 zip 버튼용. 쿠키로 받으므로 주소에 토큰이 없다. */
+export const CODE_ZIP_URL = "/api/me/code.zip";

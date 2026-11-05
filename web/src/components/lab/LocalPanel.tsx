@@ -12,7 +12,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ApiError, student } from "@/lib/api";
+import { ApiError, CODE_ZIP_URL, student } from "@/lib/api";
 import type { InstallInfo, Os, VerifyResult } from "@/lib/types";
 
 // 서버가 준 주소는 http(s)나 같은 사이트 경로일 때만 링크로 쓴다. 브라우저는 `\`를 `/`로 읽어 `/\evil.com`이
@@ -33,7 +33,7 @@ function Command({ code }: { code: string }) {
   return <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />;
 }
 
-function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }) {
+function Steps({ os, info }: { os: Os; info: InstallInfo }) {
   const [diagText, setDiagText] = useState("");
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }
     setDiagBusy(true);
     setDiagError(null);
     try {
-      await student.diagnostics(token, os, diagText);
+      await student.diagnostics(os, diagText);
       setDiagnosed(true);
     } catch (e) {
       setDiagError(message(e, "출력을 확인하지 못했습니다."));
@@ -62,7 +62,7 @@ function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }
     setVerifyError(null);
     setResult(null);
     try {
-      setResult(await student.verify(token, verifyText));
+      setResult(await student.verify(verifyText));
     } catch (e) {
       setVerifyError(message(e, "검증 결과를 제출하지 못했습니다."));
     } finally {
@@ -148,17 +148,22 @@ function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }
   );
 }
 
-export function LocalPanel({ token }: { token: string }) {
+export function LocalPanel() {
   const [os, setOs] = useState<Os>("macos");
   const [loaded, setLoaded] = useState<{ os: Os; info: InstallInfo } | null>(null);
   const [error, setError] = useState<{ os: Os; text: string } | null>(null);
 
+  // 다운로드 코드는 받을 때마다 새로 만들어지고 10분 뒤 끝난다. "다시 받기"는 이 값을 올려 다시 요청한다.
+  const [round, setRound] = useState(0);
+
   useEffect(() => {
     let live = true;
     student
-      .installInfo(token, os)
+      .localLink(os)
       .then((next) => {
-        if (live) setLoaded({ os, info: next });
+        if (!live) return;
+        setError(null);
+        setLoaded({ os, info: next });
       })
       .catch((e: unknown) => {
         if (live) setError({ os, text: message(e, "설치 안내를 불러오지 못했습니다.") });
@@ -166,7 +171,7 @@ export function LocalPanel({ token }: { token: string }) {
     return () => {
       live = false;
     };
-  }, [token, os]);
+  }, [os, round]);
 
   const canCopy = useCanCopy();
   const info = loaded?.os === os ? loaded.info : null;
@@ -190,17 +195,30 @@ export function LocalPanel({ token }: { token: string }) {
         </Text>
       )}
 
-      {errorText && <Banner status="error" title={errorText} />}
+      {errorText && (
+        <VStack gap={2} hAlign="start">
+          <Banner status="error" title={errorText} />
+          {!info && <Button size="sm" variant="secondary" label="다시 받기" onClick={() => setRound((n) => n + 1)} />}
+        </VStack>
+      )}
       {!info && !errorText && <Spinner label="불러오는 중" />}
       {/* 운영체제를 바꾸면 붙여넣은 내용이 맞지 않으므로 처음부터 다시 받는다. */}
-      {info && <Steps key={os} token={token} os={os} info={info} />}
+      {info && (
+        <>
+          <HStack gap={3} vAlign="center" wrap="wrap">
+            <Text type="supporting">10분 동안 쓸 수 있습니다. 지나면 다시 받으세요.</Text>
+            <Button size="sm" variant="secondary" label="다시 받기" onClick={() => setRound((n) => n + 1)} />
+          </HStack>
+          <Steps key={os} os={os} info={info} />
+        </>
+      )}
 
       <Divider />
       <VStack gap={2}>
         <Text weight="semibold">내 코드 내려받기</Text>
         <Text type="supporting">클라우드에서 작성한 코드를 zip으로 받아요. 가상환경과 캐시는 빠져요.</Text>
         {/* 파일 주소는 Next 링크가 미리 받지 않게 일반 앵커로 둔다(RSC 조각 요청이 404가 된다). */}
-        <Button label="코드 zip 다운로드" href={`/l/${encodeURIComponent(token)}/code.zip`} as="a" />
+        <Button label="코드 zip 다운로드" href={CODE_ZIP_URL} as="a" />
       </VStack>
     </VStack>
   );

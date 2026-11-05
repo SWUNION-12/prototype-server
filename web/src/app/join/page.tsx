@@ -12,7 +12,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import { ApiError, student } from "@/lib/api";
-import { SERVICE_NAME } from "@/lib/display";
+import { RESUMED_KEY, SERVICE_NAME } from "@/lib/display";
 
 function JoinForm() {
   const router = useRouter();
@@ -22,7 +22,7 @@ function JoinForm() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // 요청이 끝나기 전에 다시 보내면 토큰이 두 번 새로 발급되어 먼저 받은 화면이 404가 된다.
+  // 요청이 끝나기 전에 다시 보내면 세션 쿠키가 두 번 새로 발급되어 먼저 받은 화면이 404가 된다.
   const joining = useRef(false);
 
   // 이동한 뒤 뒤로 가기로 돌아오면 브라우저가 이 화면을 요청 중이던 상태(버튼 잠김) 그대로 되살릴 수 있다.
@@ -46,10 +46,16 @@ function JoinForm() {
     setBusy(true);
     setError(null);
     try {
-      const { token, resumed } = await student.join({ entryCode: code.trim(), name: name.trim(), pin });
+      const { resumed } = await student.join({ entryCode: code.trim(), name: name.trim(), pin });
       // 뒤로 가기로 이 화면이 되살아나도 PIN이 남아 있지 않게 비운다. 이동하는 동안 버튼은 계속 잠가 둔다.
       setPin("");
-      router.replace(`/lab?t=${encodeURIComponent(token)}${resumed ? "&resumed=1" : ""}`);
+      // 재입장 안내는 주소에 싣지 않고 탭 저장소로 넘긴다(쿠키가 세션을 들고 있어 주소는 늘 /lab).
+      try {
+        if (resumed) sessionStorage.setItem(RESUMED_KEY, "1");
+      } catch {
+        // 저장소가 막혀 있으면 안내만 빠진다.
+      }
+      router.replace("/lab");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "입장하지 못했습니다.");
       // 틀린 PIN을 그대로 두면 같은 값으로 다시 눌러 실패 횟수만 쌓는다.

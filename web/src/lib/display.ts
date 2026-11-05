@@ -95,3 +95,6 @@ export function splitExplanation(explanation: string | null): { meaning: string;
   if (at < 0) return { meaning: explanation, where: null };
   return { meaning: explanation.slice(0, at), where: explanation.slice(at + marker.length) };
 }
+
+/** 재입장했다는 표시를 입장 화면에서 실습 화면으로 넘기는 탭 저장소 키. */
+export const RESUMED_KEY = "lab-resumed";

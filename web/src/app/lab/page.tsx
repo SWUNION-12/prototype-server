@@ -12,22 +12,22 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { VStack } from "@astryxdesign/core/VStack";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { HelpIcon, LaptopIcon } from "@/components/icons";
 import { HelpPanel } from "@/components/lab/HelpPanel";
 import { IdeFrame } from "@/components/lab/IdeFrame";
 import { LocalPanel } from "@/components/lab/LocalPanel";
 import { EnvBadge } from "@/components/StatusBadge";
-import { ApiError, student } from "@/lib/api";
-import { SERVICE_NAME } from "@/lib/display";
+import { ApiError, CODE_ZIP_URL, student } from "@/lib/api";
+import { SERVICE_NAME, RESUMED_KEY } from "@/lib/display";
 import { usePoll } from "@/lib/use-poll";
 
 type Panel = "help" | "local" | null;
 
 const PANEL_TITLE = { help: "도움 요청", local: "내 PC로 이어가기" } as const;
 
-// 토큰이 없거나(주소가 잘못됨) 404(재입장으로 토큰이 바뀐 옛 탭)이면 조회를 멈추고 이 화면을 보인다.
+// 쿠키가 없거나 무효(다른 곳에서 재입장해 토큰이 바뀜, 남의 주소를 연 다른 브라우저)이면 404가 와서 조회를 멈추고 이 화면을 보인다.
 function Lost() {
   return (
     <Center className="app-root" padding={4}>
@@ -40,16 +40,33 @@ function Lost() {
   );
 }
 
-// 정적 빌드에서는 경로 값을 쓸 수 없어 토큰을 쿼리(/lab?t=...)로 받는다.
-function Lab({ token, resumed }: { token: string; resumed: boolean }) {
-  const fetcher = useCallback(() => student.me(token), [token]);
+function Lab({ resumed }: { resumed: boolean }) {
+  const router = useRouter();
   const { data: me, error, refresh } = usePoll(
-    fetcher,
+    student.me,
     5000,
     (e) => e instanceof ApiError && e.status === 404,
   );
   const [panel, setPanel] = useState<Panel>(null);
   const [resumedDismissed, setResumedDismissed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  async function leave() {
+    setLeaving(true);
+    setLeaveError(null);
+    try {
+      await student.logout();
+    } catch (e) {
+      // 404면 이미 쿠키가 없는 것이라 나가도 된다. 그 밖의 실패는 쿠키가 남아 있으니 알린다.
+      if (!(e instanceof ApiError && e.status === 404)) {
+        setLeaveError(e instanceof ApiError ? e.message : "나가지 못했습니다.");
+        setLeaving(false);
+        return;
+      }
+    }
+    router.replace("/join");
+  }
 
   if (error instanceof ApiError && error.status === 404) return <Lost />;
 
@@ -66,7 +83,6 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
   }
 
   const isEnded = me.courseStatus === "ENDED";
-  const zipUrl = `/l/${encodeURIComponent(token)}/code.zip`;
   const isIdeUrlSafe = /^https?:\/\/\S+\/$/.test(me.ideUrl);
   // 서버가 이미 한국어 문장으로 풀어 준다.
   const issues = me.issuesText.join("\n");
@@ -103,9 +119,11 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
             icon={<Icon icon={HelpIcon} size="sm" />}
             onClick={() => toggle("help")}
           />
+          <Button variant="ghost" label="나가기" isLoading={leaving} onClick={leave} />
         </HStack>
       </header>
 
+      {leaveError && <Banner container="section" status="error" title={leaveError} />}
       {error != null && (
         <Banner container="section" status="warning" title="서버에 연결하지 못했습니다. 다시 시도하고 있어요." />
       )}
@@ -147,7 +165,7 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
                 title="수업이 종료되었습니다"
                 description="작성한 코드는 남아 있어요. 아래 버튼으로 내려받을 수 있어요."
                 // 파일 주소라 Next 링크가 아닌 일반 앵커로 둔다. Next 링크는 화면에 보이면 RSC 조각(.../code.zip/__next._tree.txt)을 미리 받아 404가 난다.
-                actions={<Button variant="primary" label="코드 zip 다운로드" href={zipUrl} as="a" />}
+                actions={<Button variant="primary" label="코드 zip 다운로드" href={CODE_ZIP_URL} as="a" />}
               />
             </Center>
           ) : isIdeUrlSafe ? (
@@ -173,13 +191,12 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
             <div className="lab-panel-body">
               {panel === "help" ? (
                 <HelpPanel
-                  token={token}
                   latestHelp={me.latestHelp}
                   isCourseOpen={!isEnded}
                   onChange={refresh}
                 />
               ) : (
-                <LocalPanel token={token} />
+                <LocalPanel />
               )}
             </div>
           </aside>
@@ -189,30 +206,29 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
   );
 }
 
-function LabEntry() {
-  const params = useSearchParams();
-  const token = params.get("t");
-  // 재입장 안내는 한 번만 보인다. 새로고침해도 다시 뜨지 않게 주소에서 지운다(이미 읽은 값은 그대로 쓴다).
-  const [resumed] = useState(() => params.get("resumed") === "1");
+export default function LabPage() {
+  // 재입장 안내는 한 번만 보인다. 입장 화면이 탭 저장소에 남긴 표시를 읽고(렌더 중에는 읽기만 한다) 효과에서 지운다.
+  const [resumed] = useState(() => {
+    try {
+      return sessionStorage.getItem(RESUMED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // 주소에 t 값이 남아 있어도 값은 쓰지 않고 주소창에서만 지운다. 토큰이 기록이나 어깨너머로 남지 않게 한다.
   useEffect(() => {
-    if (!resumed) return;
+    try {
+      sessionStorage.removeItem(RESUMED_KEY);
+    } catch {
+      // 저장소가 막혀 있어도 화면에는 영향이 없다.
+    }
+  }, []);
+  useEffect(() => {
     const url = new URL(window.location.href);
+    if (!url.searchParams.has("t") && !url.searchParams.has("resumed")) return;
+    url.searchParams.delete("t");
     url.searchParams.delete("resumed");
     window.history.replaceState(null, "", url);
-  }, [resumed]);
-  return token ? <Lab key={token} token={token} resumed={resumed} /> : <Lost />;
-}
-
-export default function LabPage() {
-  return (
-    <Suspense
-      fallback={
-        <Center className="app-root">
-          <Spinner size="lg" label="불러오는 중" />
-        </Center>
-      }
-    >
-      <LabEntry />
-    </Suspense>
-  );
+  }, []);
+  return <Lab resumed={resumed} />;
 }

@@ -16,7 +16,6 @@ import { CLASSIFICATION_LABEL, splitExplanation } from "@/lib/display";
 import type { LatestHelp } from "@/lib/types";
 
 type Props = {
-  token: string;
   latestHelp: LatestHelp | null;
   isCourseOpen: boolean;
   onChange: () => Promise<void>;
@@ -30,13 +29,7 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EscalateAction({
-  token,
-  onChange,
-}: {
-  token: string;
-  onChange: () => Promise<void>;
-}) {
+function EscalateAction({ onChange }: { onChange: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +37,7 @@ function EscalateAction({
     setBusy(true);
     setError(null);
     try {
-      await student.escalate(token);
+      await student.escalate();
       await onChange();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "강사에게 알리지 못했습니다.");
@@ -61,7 +54,7 @@ function EscalateAction({
   );
 }
 
-export function HelpPanel({ token, latestHelp, isCourseOpen, onChange }: Props) {
+export function HelpPanel({ latestHelp, isCourseOpen, onChange }: Props) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +65,7 @@ export function HelpPanel({ token, latestHelp, isCourseOpen, onChange }: Props) 
     setBusy(true);
     setError(null);
     try {
-      await student.help(token, text.trim() === "" ? null : text);
+      await student.help(text.trim() === "" ? null : text);
       setText("");
       await onChange();
     } catch (e) {
@@ -136,7 +129,7 @@ export function HelpPanel({ token, latestHelp, isCourseOpen, onChange }: Props) 
         <Text weight="semibold">환경을 복구했어요</Text>
         <Text type="supporting">수업 환경과 같은 상태로 되돌렸어요. 다시 실행해 보세요.</Text>
         <VStack gap={2} width="100%" paddingBlockStart={2}>
-          {isCourseOpen && <EscalateAction token={token} onChange={onChange} />}
+          {isCourseOpen && <EscalateAction onChange={onChange} />}
           {isCourseOpen && <Button variant="ghost" label="다시 요청하기" onClick={again} />}
         </VStack>
       </Centered>
@@ -149,7 +142,7 @@ export function HelpPanel({ token, latestHelp, isCourseOpen, onChange }: Props) 
         <Text weight="semibold">원인을 찾지 못했어요</Text>
         <Text type="supporting">오류 내용을 붙여넣어 다시 요청하거나 강사를 호출해 주세요.</Text>
         <VStack gap={2} width="100%" paddingBlockStart={2}>
-          {isCourseOpen && <EscalateAction token={token} onChange={onChange} />}
+          {isCourseOpen && <EscalateAction onChange={onChange} />}
           {isCourseOpen && <Button variant="ghost" label="다시 요청하기" onClick={again} />}
         </VStack>
       </Centered>
@@ -185,7 +178,7 @@ export function HelpPanel({ token, latestHelp, isCourseOpen, onChange }: Props) 
       <Divider />
       <VStack gap={2}>
         <Text type="supporting">해결되지 않으면 강사에게 알릴 수 있어요.</Text>
-        {isCourseOpen && <EscalateAction token={token} onChange={onChange} />}
+        {isCourseOpen && <EscalateAction onChange={onChange} />}
         {isCourseOpen && <Button variant="ghost" label="다시 요청하기" onClick={again} />}
       </VStack>
     </VStack>

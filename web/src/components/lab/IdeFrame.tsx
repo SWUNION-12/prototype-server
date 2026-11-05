@@ -10,9 +10,10 @@ import { copyText } from "@/lib/clipboard";
 /**
  * code-server를 화면 안에 띄운다. 로그인 폼을 대신 보내지 않는다. iframe 안에는 code-server 자체
  * 로그인 화면이 뜨고, 학생이 머리말의 비밀번호를 복사해 한 번 붙여 넣는다.
+ * 비밀번호는 password 방식 세션에만 온다. 없으면(proxy 방식) 서버가 이미 접근을 확인하므로 iframe만 둔다.
  * key={ideUrl}로 주소가 바뀌면(강사 재시작) iframe을 새로 띄운다.
  */
-export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: string }) {
+export function IdeFrame({ ideUrl, password }: { ideUrl: string; password?: string }) {
   const [copyState, setCopyState] = useState<"idle" | "done" | "failed">("idle");
   const field = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -33,6 +34,7 @@ export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: strin
   }
 
   async function copy() {
+    if (!password) return;
     const ok = await copyText(password);
     setCopyState(ok ? "done" : "failed");
     clearTimeout(timer.current);
@@ -42,6 +44,7 @@ export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: strin
   return (
     <>
       <div className="lab-ide-bar">
+        {password ? (
         <HStack gap={3} vAlign="center" wrap="wrap">
           <Text type="supporting">IDE 비밀번호</Text>
           {copyState === "failed" && (
@@ -64,6 +67,9 @@ export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: strin
                 : ""}
           </Text>
         </HStack>
+        ) : (
+          <span />
+        )}
         <Button
           size="sm"
           variant="ghost"
