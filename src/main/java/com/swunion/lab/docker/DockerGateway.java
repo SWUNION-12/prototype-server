@@ -33,10 +33,20 @@ public interface DockerGateway {
 
 	void stop(String containerId);
 
-	/** 컨테이너만 지운다. 볼륨은 남는다. */
+	/** 멈춘 컨테이너도 true. 없으면 false. 404가 아닌 오류는 DockerOperationException. */
+	boolean containerExists(String containerId);
+
+	/** 없으면 false. 404가 아닌 오류는 DockerOperationException. */
+	boolean volumeExists(String volumeName);
+
+	/** 컨테이너만 지운다. 볼륨은 남는다. 이미 없으면 조용히 끝나고, 그 밖의 오류는 DockerOperationException. */
 	void remove(String containerId);
 
+	/** 이미 없으면 조용히 끝난다. 컨테이너가 붙어 있는 등 그 밖의 오류는 DockerOperationException. */
 	void removeVolume(String volumeName);
+
+	/** 강제로 지운다. 이미 없으면 조용히 끝나고, 그 밖의 오류는 DockerOperationException. */
+	void removeImage(String image);
 
 	/** 컨테이너 경로를 tar 스트림으로 돌려준다. 호출자가 닫는다. */
 	InputStream copyArchive(String containerId, String path);

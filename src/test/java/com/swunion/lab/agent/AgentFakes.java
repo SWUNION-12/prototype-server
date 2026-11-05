@@ -117,6 +117,20 @@ final class AgentFakes {
 		}
 
 		@Override
+		public boolean containerExists(String id) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public boolean volumeExists(String volumeName) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public void removeImage(String image) {
+		}
+
+		@Override
 		public InputStream copyArchive(String id, String path) {
 			throw new UnsupportedOperationException();
 		}

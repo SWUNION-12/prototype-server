@@ -142,6 +142,69 @@ class DockerJavaGatewayIT {
 		assertThat(gw.imageExists(tag)).isFalse();
 	}
 
+	@Test
+	void existenceChecksAndIdempotentRemoval(@TempDir Path ctx) throws Exception {
+		String id = start();
+		String vol = volumes.getLast();
+		assertThat(gw.containerExists(id)).isTrue();
+		assertThat(gw.volumeExists(vol)).isTrue();
+
+		// 멈춘 컨테이너도 "있는" 것이다. 재개/재시작이 이 구분에 기댄다.
+		gw.stop(id);
+		assertThat(gw.containerExists(id)).isTrue();
+		assertThat(gw.isRunning(id)).isFalse();
+
+		gw.remove(id);
+		gw.remove(id);
+		assertThat(gw.containerExists(id)).isFalse();
+		// 컨테이너를 지워도 학생 코드가 든 볼륨은 남는다.
+		assertThat(gw.volumeExists(vol)).isTrue();
+
+		gw.removeVolume(vol);
+		gw.removeVolume(vol);
+		assertThat(gw.volumeExists(vol)).isFalse();
+
+		Files.writeString(ctx.resolve("Dockerfile"), "FROM " + BASE + "\nRUN true\n");
+		String tag = "swunion-it-build:" + UUID.randomUUID().toString().substring(0, 8);
+		try {
+			gw.buildImage(ctx, tag, l -> {
+			});
+			assertThat(gw.imageExists(tag)).isTrue();
+			gw.removeImage(tag);
+			gw.removeImage(tag);
+			assertThat(gw.imageExists(tag)).isFalse();
+			// 강제 삭제가 같은 이미지를 공유하는 다른 태그(베이스)까지 지우면 안 된다.
+			assertThat(gw.imageExists(BASE)).isTrue();
+		}
+		finally {
+			try {
+				client.removeImageCmd(tag).withForce(true).exec();
+			}
+			catch (RuntimeException ignored) {
+			}
+		}
+	}
+
+	@Test
+	void existenceChecksAndRemovalOfMissingTargetsAreQuiet() {
+		assertThat(gw.containerExists("swunion-it-does-not-exist")).isFalse();
+		assertThat(gw.volumeExists("swunion-it-no-such-volume")).isFalse();
+		gw.remove("swunion-it-does-not-exist");
+		gw.removeVolume("swunion-it-no-such-volume");
+		gw.removeImage("swunion-it-no-such-image:0");
+	}
+
+	@Test
+	void removeVolumeInUseThrowsDockerOperationException() {
+		String id = start();
+		String vol = volumes.getLast();
+		// 멈춰 있어도 컨테이너가 붙어 있으면 Docker가 409로 거절한다. 404가 아니므로 삼키면 안 된다.
+		gw.stop(id);
+		assertThatThrownBy(() -> gw.removeVolume(vol)).isInstanceOf(DockerOperationException.class)
+				.hasMessageContaining(vol).hasMessageNotContaining("PASSWORD");
+		assertThat(gw.volumeExists(vol)).isTrue();
+	}
+
 	private static Set<String> allContainerIds() {
 		return client.listContainersCmd().withShowAll(true).exec().stream().map(Container::getId)
 				.collect(Collectors.toSet());

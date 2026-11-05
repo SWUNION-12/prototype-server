@@ -2,6 +2,7 @@ package com.swunion.lab.docker;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
+import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.BuildResponseItem;
@@ -87,6 +88,15 @@ public class DockerJavaGateway implements DockerGateway {
 			throw new DockerOperationException("이미지 빌드 실패:\n" + tail(all));
 		}
 		return imageId[0];
+	}
+
+	/**
+	 * 호출자는 이 메시지를 응답과 로그에 그대로 남긴다. 그래서 대상 이름과 HTTP 상태만 담고,
+	 * 데몬이 돌려준 본문은 cause에만 둔다.
+	 */
+	private static DockerOperationException failure(String what, String target, RuntimeException cause) {
+		String status = cause instanceof DockerException de ? " (HTTP " + de.getHttpStatus() + ")" : "";
+		return new DockerOperationException(what + ": " + target + status, cause);
 	}
 
 	private static String tail(CharSequence s) {
@@ -230,6 +240,10 @@ public class DockerJavaGateway implements DockerGateway {
 			docker.removeContainerCmd(containerId).withForce(true).withRemoveVolumes(false).exec();
 		}
 		catch (NotFoundException ignored) {
+			// 이미 없으면 목적을 이룬 것이다. 재시도·중복 호출이 안전해야 한다.
+		}
+		catch (RuntimeException e) {
+			throw failure("컨테이너 삭제 실패", containerId, e);
 		}
 	}
 
@@ -239,6 +253,53 @@ public class DockerJavaGateway implements DockerGateway {
 			docker.removeVolumeCmd(volumeName).exec();
 		}
 		catch (NotFoundException ignored) {
+			// 이미 없으면 목적을 이룬 것이다.
+		}
+		catch (RuntimeException e) {
+			// 컨테이너가 붙어 있으면 409. 조용히 넘기면 학생 코드가 든 볼륨이 남은 줄 모르고 지운 것으로 보고된다.
+			throw failure("볼륨 삭제 실패", volumeName, e);
+		}
+	}
+
+	@Override
+	public boolean containerExists(String containerId) {
+		try {
+			docker.inspectContainerCmd(containerId).exec();
+			return true;
+		}
+		catch (NotFoundException e) {
+			return false;
+		}
+		catch (RuntimeException e) {
+			throw failure("컨테이너 확인 실패", containerId, e);
+		}
+	}
+
+	@Override
+	public boolean volumeExists(String volumeName) {
+		try {
+			docker.inspectVolumeCmd(volumeName).exec();
+			return true;
+		}
+		catch (NotFoundException e) {
+			return false;
+		}
+		catch (RuntimeException e) {
+			throw failure("볼륨 확인 실패", volumeName, e);
+		}
+	}
+
+	@Override
+	public void removeImage(String image) {
+		try {
+			// noPrune: 지우는 이미지의 태그 없는 부모까지 따라 지우면 이 서버가 만들지 않은 이미지가 사라질 수 있다.
+			docker.removeImageCmd(image).withForce(true).withNoPrune(true).exec();
+		}
+		catch (NotFoundException ignored) {
+			// 이미 없으면 목적을 이룬 것이다.
+		}
+		catch (RuntimeException e) {
+			throw failure("이미지 삭제 실패", image, e);
 		}
 	}
 

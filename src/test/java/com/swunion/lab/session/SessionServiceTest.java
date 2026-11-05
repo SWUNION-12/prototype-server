@@ -327,6 +327,9 @@ class SessionServiceTest {
 		public ExecResult exec(String id, List<String> c, String w, Duration t) { throw new UnsupportedOperationException(); }
 		public void stop(String id) { stopped.add(id); }
 		public void removeVolume(String v) { removedVolumes.add(v); }
+		public boolean containerExists(String id) { throw new UnsupportedOperationException(); }
+		public boolean volumeExists(String v) { throw new UnsupportedOperationException(); }
+		public void removeImage(String image) { }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}
 }

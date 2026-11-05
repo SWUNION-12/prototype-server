@@ -187,6 +187,9 @@ class EnvironmentCheckerTest {
 		public void stop(String id) { }
 		public void remove(String id) { }
 		public void removeVolume(String v) { }
+		public boolean containerExists(String id) { throw new UnsupportedOperationException(); }
+		public boolean volumeExists(String v) { throw new UnsupportedOperationException(); }
+		public void removeImage(String image) { }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}
 }
