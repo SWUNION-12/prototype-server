@@ -2,11 +2,13 @@ package com.swunion.lab.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
@@ -23,6 +25,12 @@ public class WebConfig implements WebMvcConfigurer {
 
 	@Override
 	public void addResourceHandlers(ResourceHandlerRegistry registry) {
+		// 파일 이름에 해시가 붙으므로 바뀌면 주소도 바뀐다. 오래 캐시해도 되고, 학생이 한꺼번에 입장할 때 같은 파일을 다시 받지 않는다.
+		// 캐시 헤더를 직접 정해 두면 Spring Security가 no-store를 덧붙이지 않는다. HTML·RSC(.txt)는 아래 핸들러에서 캐시하지 않는다.
+		registry.addResourceHandler("/_next/static/**")
+				.addResourceLocations("classpath:/static/_next/static/")
+				.setCacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
+				.resourceChain(false);
 		registry.addResourceHandler("/**")
 				.addResourceLocations("classpath:/static/")
 				.resourceChain(false)
@@ -34,6 +42,16 @@ public class WebConfig implements WebMvcConfigurer {
 	@Override
 	public void addViewControllers(ViewControllerRegistry registry) {
 		registry.addRedirectViewController("/", "/join").setStatusCode(HttpStatus.FOUND);
+		// 이미 나눠 준 링크와 열려 있던 탭을 위한 옛 주소. 학생 토큰(?t=)이 쿼리에 있어 쿼리를 그대로 넘긴다.
+		// /instructor.html은 /instructor로 보낼 뿐이라 거기서 로그인을 요구받는다(보안 규칙을 비켜 가지 않는다).
+		redirectKeepingQuery(registry, "/join.html", "/join");
+		redirectKeepingQuery(registry, "/student.html", "/lab");
+		redirectKeepingQuery(registry, "/instructor.html", "/instructor");
+		redirectKeepingQuery(registry, "/dashboard.html", "/instructor");
+	}
+
+	private static void redirectKeepingQuery(ViewControllerRegistry registry, String from, String to) {
+		registry.addRedirectViewController(from, to).setStatusCode(HttpStatus.FOUND).setKeepQueryParams(true);
 	}
 
 	// 정적 빌드에는 확장자 없는 파일이 없고 같은 이름의 디렉터리(instructor/ 옆 instructor.html)만 있다. 그래서 마지막 조각에 점이 없으면

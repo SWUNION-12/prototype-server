@@ -76,7 +76,6 @@ class SecurityConfigTest {
 
 		// 정적 빌드의 파일 주소(.html 직접 주소, RSC 조각). 돌아갈 화면이 아니므로 next 없이 로그인 화면으로 보낸다.
 		static final Map<String, String> FILES = Map.of(
-				"/instructor.html", "instructor-page",
 				"/instructor.txt", "instructor-rsc",
 				"/instructor/course.txt", "instructor-course-rsc",
 				"/instructor/course/__next.instructor.course.__PAGE__.txt", "instructor-course-segment");
@@ -109,6 +108,15 @@ class SecurityConfigTest {
 						.andExpect(status().isOk())
 						.andExpect(content().string(containsString(file.getValue())));
 			}
+		}
+
+		// /instructor.html은 옛 주소라 파일을 주지 않고 /instructor로 보낸다. 그래도 로그인 없이는 로그인 화면이 먼저다.
+		@Test
+		void oldInstructorHtmlNeedsLoginThenRedirects() throws Exception {
+			expectLogin(mvc.perform(get("/instructor.html")), LOGIN);
+			mvc.perform(get("/instructor.html").with(user("instructor")))
+					.andExpect(status().isFound())
+					.andExpect(header().string("Location", "/instructor"));
 		}
 
 		// Next 화면 이동이 받아 오는 RSC 요청(RSC: 1)은 화면 주소로 와도 next로 싣지 않는다.

@@ -3,6 +3,8 @@ package com.swunion.lab.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.handler;
@@ -39,8 +41,6 @@ class WebConfigTest {
 		mvc.perform(get("/join")).andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
 				.andExpect(content().string(containsString("join-page")));
-		mvc.perform(get("/join.html")).andExpect(status().isOk())
-				.andExpect(content().string(containsString("join-page")));
 	}
 
 	@Test
@@ -60,6 +60,43 @@ class WebConfigTest {
 	void nextAssetsArePublic() throws Exception {
 		mvc.perform(get("/_next/static/app.js")).andExpect(status().isOk())
 				.andExpect(content().string(containsString("next-asset")));
+	}
+
+	// 해시 파일만 오래 캐시한다. Spring Security가 no-store로 덮어쓰지 않아야 하고, HTML·RSC는 캐시하지 않는다.
+	@Test
+	void hashedAssetsAreCachedAndPagesAreNot() throws Exception {
+		mvc.perform(get("/_next/static/app.js"))
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("max-age=31536000")))
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("immutable")))
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, not(containsString("no-store"))));
+		mvc.perform(get("/join"))
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")));
+		mvc.perform(get("/instructor/login.txt")).andExpect(status().isOk())
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")));
+	}
+
+	// 옛 주소는 쿼리(학생 토큰, 수업 코드)를 그대로 새 화면으로 넘긴다.
+	@Test
+	void oldPagesRedirectKeepingQuery() throws Exception {
+		mvc.perform(get("/join.html?code=ABC123")).andExpect(status().isFound())
+				.andExpect(header().string(HttpHeaders.LOCATION, "/join?code=ABC123"));
+		mvc.perform(get("/student.html?t=tok")).andExpect(status().isFound())
+				.andExpect(header().string(HttpHeaders.LOCATION, "/lab?t=tok"));
+		mvc.perform(get("/join.html")).andExpect(status().isFound())
+				.andExpect(header().string(HttpHeaders.LOCATION, "/join"));
+	}
+
+	// /instructor.html은 보안 규칙에 걸려 로그인 없이는 리다이렉트도 받지 못한다. 로그인한 강사만 /instructor로 간다.
+	@Test
+	void oldInstructorPageDoesNotBypassLogin() throws Exception {
+		mvc.perform(get("/instructor.html")).andExpect(status().is3xxRedirection())
+				.andExpect(header().string(HttpHeaders.LOCATION, containsString("/instructor/login")));
+		mvc.perform(get("/dashboard.html?course=3").with(user("teacher"))).andExpect(status().isFound())
+				.andExpect(header().string(HttpHeaders.LOCATION, "/instructor?course=3"));
+		mvc.perform(get("/instructor.html").with(user("teacher"))).andExpect(status().isFound())
+				.andExpect(header().string(HttpHeaders.LOCATION, "/instructor"));
+		mvc.perform(get("/instructor")).andExpect(status().is3xxRedirection())
+				.andExpect(header().string(HttpHeaders.LOCATION, containsString("/instructor/login")));
 	}
 
 	@Test
