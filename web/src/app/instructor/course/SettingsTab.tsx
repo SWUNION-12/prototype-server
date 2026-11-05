@@ -289,7 +289,7 @@ export function SettingsTab() {
   const locked: Busy = busy ?? (deleted ? "delete" : null);
 
   return (
-    <VStack gap={6} maxWidth={640}>
+    <VStack gap={6}>
       <CourseInfo />
       <EndCourse busy={locked} setBusy={setBusy} />
       <ResumeCourse busy={locked} setBusy={setBusy} />
