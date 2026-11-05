@@ -8,8 +8,10 @@
   body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; max-width: 480px; margin: 2em auto; padding: 0 1em; line-height: 1.45; }
   h1 { font-size: 1.4em; }
   label { display: block; margin: 0.8em 0 0.2em; font-weight: bold; }
-  input[type=text], input[type=password] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
-  #pin { width: 8em; letter-spacing: 0.3em; }
+  input[type=text] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
+  /* 비밀번호 입력칸으로 두면 브라우저가 이름과 함께 "비밀번호 저장"을 권해, 공용 PC의 다음 학생에게 자동 입력될 수 있다.
+     그래서 text로 두고 글자만 가린다. 이 속성을 모르는 브라우저에서는 숫자가 그대로 보인다. */
+  #pin { width: 8em; letter-spacing: 0.3em; -webkit-text-security: disc; }
   button { font: inherit; padding: 6px 16px; cursor: pointer; margin-top: 1em; }
   .err { color: #b00020; white-space: pre-wrap; }
   .muted { color: #666; }
@@ -28,7 +30,7 @@
   <input type="text" id="name" autocomplete="off" maxlength="40" required>
 
   <label for="pin">PIN (숫자 4자리)</label>
-  <input type="password" id="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-describedby="pinHelp">
+  <input type="text" id="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-describedby="pinHelp">
   <label class="inline"><input type="checkbox" id="showPin"> PIN 보이기</label>
   <p id="pinHelp" class="muted small">처음 입장하면 PIN을 새로 정하고, 다시 들어올 때는 처음 정한 PIN을 입력하세요.</p>
 
@@ -56,7 +58,7 @@ async function api(method, url, body) {
 
 // 처음 정하는 PIN은 확인 칸이 없어서, 가려 둔 채로 잘못 치면 본인도 모르는 PIN이 된다. 필요할 때 볼 수 있게 한다.
 document.getElementById('showPin').addEventListener('change', function (ev) {
-  document.getElementById('pin').type = ev.target.checked ? 'text' : 'password';
+  document.getElementById('pin').style.webkitTextSecurity = ev.target.checked ? 'none' : 'disc';
 });
 
 // 요청이 끝나기 전에 다시 보내면 토큰이 두 번 새로 발급되어 먼저 받은 화면이 404가 된다.
@@ -88,6 +90,8 @@ document.getElementById('joinForm').addEventListener('submit', async function (e
     });
     if (r.ok && r.data && typeof r.data.token === 'string' && r.data.token) {
       // 되찾은 입장이면 학생 화면이 한 번 알려 준다. 이동하는 동안 버튼은 계속 잠가 둔다.
+      // 뒤로 가기로 이 화면이 되살아나도 PIN이 남아 있지 않게 비운다.
+      pinEl.value = '';
       location.href = 'student.html?t=' + encodeURIComponent(r.data.token) + (r.data.resumed === true ? '&resumed=1' : '');
       return;
     }
@@ -106,6 +110,17 @@ document.getElementById('joinForm').addEventListener('submit', async function (e
   }
   joining = false;
   btn.disabled = false;
+});
+
+// 이동한 뒤 뒤로 가기로 돌아오면 브라우저가 이 화면을 요청 중이던 상태 그대로(버튼 잠김) 되살릴 수 있다.
+window.addEventListener('pageshow', function (ev) {
+  joining = false;
+  document.getElementById('joinBtn').disabled = false;
+  if (ev.persisted) {
+    const msg = document.getElementById('msg');
+    msg.textContent = '';
+    msg.className = '';
+  }
 });
 </script>
 </body>
