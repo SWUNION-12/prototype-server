@@ -6,22 +6,21 @@
 
 const crypto = require('crypto');
 const vscode = require('vscode');
-const { createClient, MSG_NO_ENV } = require('./lib/client');
+const { createClient, keepTail, MSG_NO_ENV } = require('./lib/client');
 const { toView } = require('./lib/view-model');
 const { createPoller } = require('./lib/poller');
 const { panelHtml } = require('./lib/panel-html');
 
 const VIEW_ID = 'swunionHelper.panel';
 const COMMAND_ID = 'swunionHelper.sendSelection';
-// webview가 보내는 글을 이 길이에서 자른다. 서버도 이 이상은 분석하지 않는다.
-const MAX_TEXT = 100000;
 
 const HELP_OK = '도움을 요청했습니다. 원인을 확인하는 동안 잠시 기다려 주세요.';
 const ESCALATE_OK = '강사에게 알렸습니다.';
 const BAD_STATUS = '상태를 읽지 못했습니다';
 const FILLED = "선택한 내용을 넣었습니다. 확인한 뒤 '도움 요청'을 누르세요.";
 const NOTHING_SELECTED = '선택한 내용이 없습니다. 오류를 드래그해 선택한 뒤 다시 시도하세요.';
-const TERMINAL_UNREADABLE = '터미널에서 선택한 내용을 읽지 못했습니다. 브라우저의 클립보드 읽기를 허용하거나, 복사해서 직접 붙여 넣으세요.';
+// 복사 명령은 이미 성공했고 브라우저가 다시 읽기만 막은 경우다. 선택은 클립보드에 있다.
+const TERMINAL_UNREADABLE = '터미널에서 선택한 내용을 클립보드에 복사했습니다. 입력칸에 Ctrl+V(Mac은 Cmd+V)로 붙여 넣으세요.';
 
 class HelperPanel {
   constructor(client) {
@@ -85,12 +84,12 @@ class HelperPanel {
         break;
       case 'draft':
         if (typeof m.text === 'string') {
-          this.draft = m.text.slice(0, MAX_TEXT);
+          this.draft = keepTail(m.text);
           this.notice = null;
         }
         break;
       case 'help':
-        this.help(typeof m.text === 'string' ? m.text.slice(0, MAX_TEXT) : '');
+        this.help(typeof m.text === 'string' ? keepTail(m.text) : '');
         break;
       case 'escalate':
         this.escalate();
@@ -146,13 +145,13 @@ class HelperPanel {
   }
 
   // 입력칸을 채우고 패널을 연다. 보내기는 학생이 확인한 뒤 직접 누른다.
-  async fill(text, emptyNotice) {
+  async fill(text, emptyNotice, focusInput = false) {
     if (text) {
-      this.draft = text.slice(0, MAX_TEXT);
+      this.draft = keepTail(text);
       this.notice = { text: FILLED, kind: 'muted' };
       this.post({ type: 'fill', text: this.draft, notice: this.notice });
     } else {
-      this.notice = { text: emptyNotice, kind: 'warn' };
+      this.notice = { text: emptyNotice, kind: 'warn', focus: focusInput };
       this.post({ type: 'notice', ...this.notice });
     }
     await vscode.commands.executeCommand(VIEW_ID + '.focus');
@@ -211,7 +210,8 @@ async function terminalSelection() {
 async function sendSelection(panel, arg) {
   try {
     if (isTerminalArg(arg)) {
-      await panel.fill(await terminalSelection(), TERMINAL_UNREADABLE);
+      // 읽지 못했으면 학생이 바로 붙여 넣을 수 있게 입력칸에 초점을 둔다.
+      await panel.fill(await terminalSelection(), TERMINAL_UNREADABLE, true);
       return;
     }
     // 편집기 우클릭은 문서 Uri를 넘기고, 명령 팔레트는 인자가 없다. 둘 다 편집기 선택을 쓴다. 팔레트에서

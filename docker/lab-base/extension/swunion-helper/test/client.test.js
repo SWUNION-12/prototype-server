@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { EventEmitter } = require('node:events');
-const { createClient, MSG_DOWN, MSG_NO_ENV } = require('../lib/client');
+const { createClient, keepTail, MSG_DOWN, MSG_NO_ENV, MAX_ERROR_TEXT } = require('../lib/client');
 
 const KEY = 'a'.repeat(64);
 const URL_BASE = 'http://host.docker.internal:8080';
@@ -202,4 +202,55 @@ test('실제 http 서버: 헤더의 키와 본문이 그대로 닿는다', async
   } finally {
     await new Promise((r) => srv.close(r));
   }
+});
+
+test('help2xx: 202 {helpId}만 성공이고, 다른 2xx는 실패 문구', async () => {
+  const cases = [
+    [200, '<html>login</html>'],
+    [200, { helpId: 1 }],
+    [202, undefined],
+    [202, '<html>proxy</html>'],
+    [202, {}],
+    [202, [1]],
+    [202, { helpId: null }],
+    [204, undefined],
+  ];
+  for (const [code, body] of cases) {
+    const r = await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fakeHttp(respond(code, body)) }).help('x');
+    assert.deepEqual(r, { ok: false, message: '요청에 실패했습니다 (HTTP ' + code + ')' }, 'HTTP ' + code + ' ' + JSON.stringify(body));
+  }
+  const ok = await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fakeHttp(respond(202, { helpId: 0 })) }).help('x');
+  assert.deepEqual(ok, { ok: true, data: { helpId: 0 } });
+});
+
+test('escalate2xx: 204나 본문 없는 2xx만 성공', async () => {
+  for (const [code, body] of [[204, undefined], [200, undefined], [202, ''], [200, '  ']]) {
+    const r = await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fakeHttp(respond(code, body)) }).escalate();
+    assert.equal(r.ok, true, 'HTTP ' + code);
+  }
+  for (const [code, body] of [[200, '<html>login</html>'], [200, {}], [202, { ok: true }]]) {
+    const r = await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fakeHttp(respond(code, body)) }).escalate();
+    assert.deepEqual(r, { ok: false, message: '요청에 실패했습니다 (HTTP ' + code + ')' }, 'HTTP ' + code + ' ' + JSON.stringify(body));
+  }
+});
+
+test('status2xx: 200 JSON 객체만 성공', async () => {
+  for (const [code, body] of [[200, '<html>login</html>'], [200, [1, 2]], [200, undefined], [204, undefined], [202, {}]]) {
+    const r = await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fakeHttp(respond(code, body)) }).status();
+    assert.deepEqual(r, { ok: false, message: '요청에 실패했습니다 (HTTP ' + code + ')' }, 'HTTP ' + code + ' ' + JSON.stringify(body));
+  }
+});
+
+test('keepTail: 긴 글은 마지막 100,000자를 남기고 help도 그 끝부분을 보낸다', async () => {
+  assert.equal(MAX_ERROR_TEXT, 100000);
+  const long = 'H'.repeat(5) + 'x'.repeat(MAX_ERROR_TEXT - 1) + 'END';
+  const tail = keepTail(long);
+  assert.equal(tail.length, MAX_ERROR_TEXT);
+  assert.ok(tail.endsWith('END'));
+  assert.ok(!tail.includes('H'));
+  assert.equal(keepTail('short'), 'short');
+
+  const fake = fakeHttp(respond(202, { helpId: 1 }));
+  await createClient({ serverUrl: URL_BASE, key: KEY, httpModule: fake }).help(long);
+  assert.equal(JSON.parse(fake.calls[0].body).errorText, tail);
 });

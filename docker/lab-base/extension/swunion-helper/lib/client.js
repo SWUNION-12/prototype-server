@@ -29,7 +29,26 @@ function baseUrl(serverUrl) {
   }
 }
 
-function toResult(statusCode, text) {
+function isObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+// 엔드포인트마다 서버가 실제로 주는 성공 응답만 성공으로 친다. 중간 프록시나 공용 와이파이 로그인 화면이
+// 200 HTML을 돌려줘도 학생이 "요청했습니다"를 보고 기다리지 않게 하려는 것이다.
+const ACCEPT = {
+  // 200 상태 JSON 객체
+  status: (code, data) => code === 200 && isObject(data),
+  // 202 {helpId}
+  help: (code, data) => code === 202 && isObject(data) && data.helpId !== undefined && data.helpId !== null,
+  // 204, 또는 본문 없는 2xx
+  escalate: (code, data, text) => code === 204 || text.trim() === '',
+};
+
+function failed(statusCode) {
+  return '요청에 실패했습니다 (HTTP ' + statusCode + ')';
+}
+
+function toResult(statusCode, text, accept) {
   let data = null;
   if (text) {
     try {
@@ -39,17 +58,19 @@ function toResult(statusCode, text) {
     }
   }
   if (statusCode >= 200 && statusCode < 300) {
-    return { ok: true, data };
+    return accept(statusCode, data, text) ? { ok: true, data } : { ok: false, message: failed(statusCode) };
   }
-  const error = data && typeof data === 'object' && typeof data.error === 'string' ? data.error.trim() : '';
-  return { ok: false, message: error || '요청에 실패했습니다 (HTTP ' + statusCode + ')' };
+  const error = isObject(data) && typeof data.error === 'string' ? data.error.trim() : '';
+  return { ok: false, message: error || failed(statusCode) };
+}
+
+/** 글이 너무 길면 끝부분을 남긴다. 오류는 보통 마지막 줄에 있고, 서버도 끝에서부터 읽는다. */
+function keepTail(text, max = MAX_ERROR_TEXT) {
+  return text.length > max ? text.slice(-max) : text;
 }
 
 function errorTextBody(errorText) {
-  if (!present(errorText)) {
-    return { errorText: null };
-  }
-  return { errorText: errorText.length > MAX_ERROR_TEXT ? errorText.slice(-MAX_ERROR_TEXT) : errorText };
+  return { errorText: present(errorText) ? keepTail(errorText) : null };
 }
 
 /**
@@ -61,7 +82,7 @@ function createClient(opts) {
   const configured = present(serverUrl) && present(key);
   const base = configured ? baseUrl(serverUrl) : null;
 
-  function call(method, path, body) {
+  function call(method, path, accept, body) {
     if (!configured) {
       return Promise.resolve({ ...NO_ENV });
     }
@@ -115,7 +136,7 @@ function createClient(opts) {
             }
             chunks.push(b);
           });
-          res.on('end', () => finish(toResult(res.statusCode, Buffer.concat(chunks).toString('utf8'))));
+          res.on('end', () => finish(toResult(res.statusCode, Buffer.concat(chunks).toString('utf8'), accept)));
           res.on('error', abort);
           res.on('aborted', abort);
         });
@@ -134,10 +155,10 @@ function createClient(opts) {
 
   return {
     configured,
-    status: () => call('GET', 'api/ide/status'),
-    help: (errorText) => call('POST', 'api/ide/help', errorTextBody(errorText)),
-    escalate: () => call('POST', 'api/ide/escalate'),
+    status: () => call('GET', 'api/ide/status', ACCEPT.status),
+    help: (errorText) => call('POST', 'api/ide/help', ACCEPT.help, errorTextBody(errorText)),
+    escalate: () => call('POST', 'api/ide/escalate', ACCEPT.escalate),
   };
 }
 
-module.exports = { createClient, MSG_DOWN, MSG_NO_ENV, TIMEOUT_MS };
+module.exports = { createClient, keepTail, MSG_DOWN, MSG_NO_ENV, TIMEOUT_MS, MAX_ERROR_TEXT };

@@ -181,6 +181,7 @@ const SCRIPT = `
         renderState(m.state);
         if (m.notice) setMsg($('helpMsg'), m.notice.text, m.notice.kind);
         syncButtons();
+        if (m.notice && m.notice.focus === true && configured) $('errorText').focus();
         break;
       case 'state':
         renderState(m);
@@ -199,6 +200,7 @@ const SCRIPT = `
         break;
       case 'notice':
         setMsg($('helpMsg'), m.text, m.kind);
+        if (m.focus === true && configured) $('errorText').focus();
         break;
     }
   });
