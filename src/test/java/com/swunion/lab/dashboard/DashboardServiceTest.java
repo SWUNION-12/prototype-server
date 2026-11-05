@@ -38,6 +38,7 @@ import com.swunion.lab.session.EnvStatus;
 import com.swunion.lab.session.JoinException;
 import com.swunion.lab.session.SessionRepository;
 import com.swunion.lab.session.SessionService;
+import com.swunion.lab.session.SessionServices;
 import com.swunion.lab.session.StudentSession;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -375,7 +376,7 @@ class DashboardServiceTest {
 		// 종료 뒤에는 입장이 거부되고, 주기 점검 대상(READY 수업)에서도 빠진다.
 		var props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
 				"b:1", "t/course-", "swunion-test-s");
-		SessionService join = new SessionService(sessions, courses, docker, props, (port, timeout) -> true, json);
+		SessionService join = SessionServices.create(sessions, courses, docker, props, (port, timeout) -> true, json);
 		assertThatThrownBy(() -> join.join("DASH01", "새학생")).isInstanceOf(JoinException.class);
 		verify(docker, never()).createAndStart(any());
 		assertThat(sessions.findByCourse_StatusAndContainerIdIsNotNull(CourseStatus.READY)).isEmpty();

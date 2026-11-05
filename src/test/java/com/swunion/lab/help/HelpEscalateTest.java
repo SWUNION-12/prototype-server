@@ -11,6 +11,7 @@ import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.session.SessionRepository;
 import com.swunion.lab.session.SessionService;
+import com.swunion.lab.session.SessionServices;
 import com.swunion.lab.session.StudentSession;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,7 @@ class HelpEscalateTest {
 		session = sessions.save(new StudentSession(c, "철수", "tok-escalate", "pw"));
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
 				"t/course-", "swunion-test-s");
-		sessionService = new SessionService(sessions, courses, mock(DockerGateway.class), props, (port, t) -> true,
+		sessionService = SessionServices.create(sessions, courses, mock(DockerGateway.class), props, (port, t) -> true,
 				JsonMapper.builder().build());
 		help = new HelpService(helps, sessionService, mock(AgentTrigger.class));
 	}

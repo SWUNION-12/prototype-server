@@ -51,7 +51,7 @@ class SessionServiceTest {
 			duringHealthWait.accept(port);
 			return healthy;
 		};
-		service = new SessionService(sessions, courses, docker, props, waiter, JsonMapper.builder().build());
+		service = SessionServices.create(sessions, courses, docker, props, waiter, JsonMapper.builder().build());
 		ready = newCourse("ABC123", CourseStatus.READY);
 	}
 
@@ -283,6 +283,41 @@ class SessionServiceTest {
 		assertThat(probedPorts).isEmpty();
 	}
 
+	@Test
+	void restartRecreatesAContainerThatDisappearedFromDocker() {
+		StudentSession s = service.join("ABC123", "철수");
+		String volume = s.getVolumeName();
+		docker.containerExistsAnswer = false;
+		probedPorts.clear();
+
+		assertThat(service.restartContainer(s.getId())).isTrue();
+
+		assertThat(docker.containerExistsCalls).containsExactly(s.getContainerId());
+		assertThat(docker.restarted).isEmpty();
+		assertThat(docker.specs).hasSize(2);
+		assertThat(docker.specs.get(1).volumeName()).isEqualTo(volume);
+		assertThat(docker.specs.get(1).env()).containsEntry("PASSWORD", s.getIdePassword());
+		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(fresh.getHostPort()).isEqualTo(docker.ports.get(fresh.getContainerId()));
+		assertThat(probedPorts).containsExactly(fresh.getHostPort());
+	}
+
+	@Test
+	void restartReturnsFalseWithoutWaitingWhenDockerRefuses() {
+		StudentSession s = service.join("ABC123", "철수");
+		docker.restartFailure = new DockerOperationException("restart refused");
+		probedPorts.clear();
+
+		assertThat(service.restartContainer(s.getId())).isFalse();
+
+		assertThat(docker.restarted).as("재시작을 실제로 시도했다").containsExactly(s.getContainerId());
+		assertThat(probedPorts).isEmpty();
+	}
+
+	/**
+	 * containerExists/volumeExists는 예외를 던지지 않고 설정한 답을 돌려주며 부른 이름을 기록한다.
+	 * 던지게 두면 서비스의 catch(RuntimeException)이 삼켜 테스트가 아무것도 확인하지 못한 채 통과할 수 있다.
+	 */
 	static class FakeDocker implements DockerGateway {
 		final List<ContainerSpec> specs = new ArrayList<>();
 		final Map<String, Integer> ports = new HashMap<>();
@@ -290,12 +325,39 @@ class SessionServiceTest {
 		final List<String> removed = new ArrayList<>();
 		final List<String> removedVolumes = new ArrayList<>();
 		final List<String> stopped = new ArrayList<>();
+		final List<String> runningChecks = new ArrayList<>();
+		final List<String> containerExistsCalls = new ArrayList<>();
+		final List<String> volumeExistsCalls = new ArrayList<>();
 		Runnable onCreate = () -> { };
+		Runnable onRestart = () -> { };
+		boolean running = true;
+		boolean containerExistsAnswer = true;
+		boolean volumeExistsAnswer = true;
+		RuntimeException runningFailure;
+		RuntimeException restartFailure;
+		RuntimeException createFailure;
 		boolean failCreate;
 		boolean failHostPort;
 		int nextPort = 40000;
+		/** createFailure로 실패한 시도도 센다. 실패 경로 테스트가 만들기를 실제로 시도했는지 확인하는 데 쓴다. */
+		int createCalls;
+
+		/** 컨테이너를 만들거나 지우거나 멈추거나 재시작한 횟수. 읽기 전용 호출은 세지 않는다. */
+		int mutationCount() {
+			return specs.size() + restarted.size() + removed.size() + removedVolumes.size() + stopped.size();
+		}
+
+		/** 어떤 종류든 게이트웨이를 한 번이라도 불렀는가. */
+		boolean touched() {
+			return mutationCount() > 0 || !runningChecks.isEmpty() || !containerExistsCalls.isEmpty()
+					|| !volumeExistsCalls.isEmpty();
+		}
 
 		public String createAndStart(ContainerSpec spec) {
+			createCalls++;
+			if (createFailure != null) {
+				throw createFailure;
+			}
 			if (failCreate) {
 				throw new DockerOperationException("boom");
 			}
@@ -312,13 +374,29 @@ class SessionServiceTest {
 			}
 			return ports.get(id);
 		}
-		Runnable onRestart = () -> { };
 
 		public void restart(String id) {
 			restarted.add(id);
+			if (restartFailure != null) {
+				throw restartFailure;
+			}
 			onRestart.run();
 		}
-		public boolean isRunning(String id) { return true; }
+		public boolean isRunning(String id) {
+			runningChecks.add(id);
+			if (runningFailure != null) {
+				throw runningFailure;
+			}
+			return running;
+		}
+		public boolean containerExists(String id) {
+			containerExistsCalls.add(id);
+			return containerExistsAnswer;
+		}
+		public boolean volumeExists(String v) {
+			volumeExistsCalls.add(v);
+			return volumeExistsAnswer;
+		}
 		public void remove(String id) { removed.add(id); }
 		public boolean imageExists(String image) { return true; }
 		public String buildImage(Path d, String t, Consumer<String> l) { throw new UnsupportedOperationException(); }
@@ -327,8 +405,6 @@ class SessionServiceTest {
 		public ExecResult exec(String id, List<String> c, String w, Duration t) { throw new UnsupportedOperationException(); }
 		public void stop(String id) { stopped.add(id); }
 		public void removeVolume(String v) { removedVolumes.add(v); }
-		public boolean containerExists(String id) { throw new UnsupportedOperationException(); }
-		public boolean volumeExists(String v) { throw new UnsupportedOperationException(); }
 		public void removeImage(String image) { }
 		public InputStream copyArchive(String id, String p) { throw new UnsupportedOperationException(); }
 	}

@@ -49,6 +49,8 @@ public class StudentController {
 		m.put("envStatus", s.getEnvStatus());
 		m.put("issues", service.issues(s));
 		m.put("needsHelp", s.isNeedsHelp());
+		// 볼륨이 사라져 빈 작업 공간으로 다시 만들었을 때 화면이 안내한다.
+		m.put("workspaceLost", s.getWorkspaceLostAt() != null);
 		m.put("latestHelp", latestHelp(help.latest(s.getId())));
 		return m;
 	}

@@ -13,6 +13,7 @@ import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.session.SessionRepository;
 import com.swunion.lab.session.SessionService;
+import com.swunion.lab.session.SessionServices;
 import com.swunion.lab.session.StudentSession;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,7 +59,7 @@ class AgentHelpLiveTest {
 				Path.of("."), "b:1", "t/course-", "swunion-test-s");
 		FakeGateway docker = new FakeGateway();
 		FakeChecker checker = new FakeChecker();
-		SessionService sessionService = new SessionService(sessions, courses, docker, props, (port, t) -> true, json);
+		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);
 		AgentRunner runner = new AgentRunner(
 				new AnthropicLlmClient(AnthropicLlmClient.newRestClient(RestClient.builder()), new ApiKeyResolver(), props),
 				new AgentTools(checker, docker, sessionService, json), checker, sessionService, actions,

@@ -14,6 +14,7 @@ import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.docker.DockerGateway;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,8 @@ class StudentControllerTest {
 	MockMvc mvc;
 	@Autowired
 	CourseRepository courses;
+	@Autowired
+	SessionRepository sessions;
 	@MockitoBean
 	DockerGateway docker;
 	@MockitoBean
@@ -65,8 +68,29 @@ class StudentControllerTest {
 				.andExpect(jsonPath("$.envStatus").value("UNKNOWN"))
 				.andExpect(jsonPath("$.issues").isEmpty())
 				.andExpect(jsonPath("$.needsHelp").value(false))
+				.andExpect(jsonPath("$.workspaceLost").value(false))
 				.andExpect(jsonPath("$.latestHelp").doesNotExist())
 				.andExpect(jsonPath("$.containerId").doesNotExist());
+	}
+
+	@Test
+	void workspaceLostIsShownOnceTheWorkspaceWasRecreatedEmpty() throws Exception {
+		Course c = new Course("파이썬 기초", "3.12", "six==1.16.0");
+		c.setStatus(CourseStatus.READY);
+		c.setEntryCode("CTRL02");
+		c.setImageName("x/course-2:1");
+		courses.save(c);
+		StudentSession s = sessions.save(new StudentSession(c, "영희", "tok-ws-lost-0001", "pw"));
+		s.setHostPort(40124);
+		sessions.save(s);
+
+		mvc.perform(get("/api/s/tok-ws-lost-0001")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.workspaceLost").value(false));
+
+		sessions.markWorkspaceLost(s.getId(), Instant.parse("2026-11-05T09:30:00Z"));
+
+		mvc.perform(get("/api/s/tok-ws-lost-0001")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.workspaceLost").value(true));
 	}
 
 	@Test

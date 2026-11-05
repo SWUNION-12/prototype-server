@@ -103,4 +103,10 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.containerRunning = false, s.ideConnected = false where s.id = :id")
 	int markStopped(@Param("id") long id);
+
+	/** 볼륨이 사라져 빈 볼륨으로 다시 만든 시각. 학생 화면과 강사 대시보드가 이 값으로 유실을 안다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.workspaceLostAt = :at where s.id = :id")
+	int markWorkspaceLost(@Param("id") long id, @Param("at") Instant at);
 }

@@ -42,6 +42,8 @@ public class StudentSession {
 	@Column(length = 4000)
 	private String lastEscalatedSignature;
 	private Instant createdAt;
+	// 볼륨이 사라져 빈 볼륨으로 컨테이너를 다시 만든 시각. null이면 작업 공간이 이어진 것이다.
+	private Instant workspaceLostAt;
 
 	protected StudentSession() {
 	}
@@ -86,4 +88,5 @@ public class StudentSession {
 	public String getLastEscalatedSignature() { return lastEscalatedSignature; }
 	public void setLastEscalatedSignature(String lastEscalatedSignature) { this.lastEscalatedSignature = lastEscalatedSignature; }
 	public Instant getCreatedAt() { return createdAt; }
+	public Instant getWorkspaceLostAt() { return workspaceLostAt; }
 }

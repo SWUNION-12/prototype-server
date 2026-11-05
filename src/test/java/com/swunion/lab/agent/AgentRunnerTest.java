@@ -24,6 +24,7 @@ import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.session.EnvStatus;
 import com.swunion.lab.session.SessionRepository;
 import com.swunion.lab.session.SessionService;
+import com.swunion.lab.session.SessionServices;
 import com.swunion.lab.session.StudentSession;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -68,7 +69,7 @@ class AgentRunnerTest {
 		session = sessions.save(s);
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
 				"t/course-", "swunion-test-s");
-		SessionService sessionService = new SessionService(sessions, courses, docker, props, (port, t) -> true, json);
+		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);
 		AgentTools tools = new AgentTools(checker, docker, sessionService, json);
 		runner = new AgentRunner(llm, tools, checker, sessionService, actions, events::add, json);
 		checker.onRecord = () -> statusAtRecheck = fresh().getEnvStatus();
@@ -339,7 +340,7 @@ class AgentRunnerTest {
 				.thenThrow(new org.springframework.dao.DataIntegrityViolationException("too long"));
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
 				"t/course-", "swunion-test-s");
-		SessionService sessionService = new SessionService(sessions, courses, docker, props, (port, t) -> true, json);
+		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);
 		AgentRunner r = new AgentRunner(llm, new AgentTools(checker, docker, sessionService, json), checker,
 				sessionService, failing, events::add, json);
 		checker.rechecks.add(OK);
