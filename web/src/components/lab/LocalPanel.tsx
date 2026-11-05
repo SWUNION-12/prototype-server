@@ -11,17 +11,32 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VStack } from "@astryxdesign/core/VStack";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ApiError, student } from "@/lib/api";
 import type { InstallInfo, Os, VerifyResult } from "@/lib/types";
 
-// 서버가 준 주소는 http(s)나 같은 사이트 경로일 때만 링크로 쓴다.
-const isSafeHref = (u: string) => /^https?:\/\/\S+$/i.test(u) || /^\/[^\s/]\S*$/.test(u);
+// 서버가 준 주소는 http(s)나 같은 사이트 경로일 때만 링크로 쓴다. 브라우저는 `\`를 `/`로 읽어 `/\evil.com`이
+// 다른 사이트 주소가 되므로 둘째 글자로 `/`뿐 아니라 `\`도 막는다.
+const isSafeHref = (u: string) => /^https?:\/\/\S+$/i.test(u) || /^\/[^\s/\\]\S*$/.test(u);
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
+const noopSubscribe = () => () => {};
+
+// CodeBlock의 복사 버튼은 Clipboard API만 쓰고 대체 처리를 끼울 자리가 없다(onCopy는 복사 뒤 알림일 뿐이다).
+// http로 들어와 보안 컨텍스트가 아니면 버튼이 조용히 실패하므로, 그때는 직접 선택해 복사하라고 알린다.
 function Command({ code }: { code: string }) {
-  return <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />;
+  const canCopy = useSyncExternalStore(noopSubscribe, () => window.isSecureContext, () => true);
+  return (
+    <VStack gap={1}>
+      <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />
+      {!canCopy && (
+        <Text type="supporting" role="status">
+          복사 버튼이 동작하지 않을 수 있어요. 직접 선택해 복사하세요.
+        </Text>
+      )}
+    </VStack>
+  );
 }
 
 function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }) {
@@ -100,7 +115,7 @@ function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }
             </Text>
             <Command code={info.installCommand} />
             {isSafeHref(info.scriptUrl) ? (
-              <Link href={info.scriptUrl} isExternalLink>
+              <Link href={info.scriptUrl} isExternalLink as="a">
                 실행 전에 스크립트 내용 보기
               </Link>
             ) : (
@@ -183,7 +198,8 @@ export function LocalPanel({ token }: { token: string }) {
       <VStack gap={2}>
         <Text weight="semibold">내 코드 내려받기</Text>
         <Text type="supporting">클라우드에서 작성한 코드를 zip으로 받아요. 가상환경과 캐시는 빠져요.</Text>
-        <Button label="코드 zip 다운로드" href={`/l/${encodeURIComponent(token)}/code.zip`} />
+        {/* 파일 주소는 Next 링크가 미리 받지 않게 일반 앵커로 둔다(RSC 조각 요청이 404가 된다). */}
+        <Button label="코드 zip 다운로드" href={`/l/${encodeURIComponent(token)}/code.zip`} as="a" />
       </VStack>
     </VStack>
   );

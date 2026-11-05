@@ -12,6 +12,8 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     // 권한이 거부되면 아래 대체 방법으로 넘어간다.
   }
+  // 임시 textarea를 지우면 포커스가 body로 빠지므로 복사 버튼으로 되돌려 준다(키보드 사용자).
+  const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const area = document.createElement("textarea");
   area.value = text;
   area.setAttribute("readonly", "");
@@ -27,5 +29,6 @@ export async function copyText(text: string): Promise<boolean> {
     ok = false;
   }
   document.body.removeChild(area);
+  previous?.focus();
   return ok;
 }

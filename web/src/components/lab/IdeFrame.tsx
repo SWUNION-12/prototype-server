@@ -24,6 +24,14 @@ export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: strin
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // 비밀번호나 주소가 바뀌면(강사 재시작) 이전 복사 결과는 더 이상 맞지 않는다.
+  // 렌더 중에 이전 값과 비교해 되돌린다(effect로 하면 한 프레임 동안 옛 표시가 남는다).
+  const [seen, setSeen] = useState({ password, ideUrl });
+  if (seen.password !== password || seen.ideUrl !== ideUrl) {
+    setSeen({ password, ideUrl });
+    setCopyState("idle");
+  }
+
   async function copy() {
     const ok = await copyText(password);
     setCopyState(ok ? "done" : "failed");
@@ -46,17 +54,15 @@ export function IdeFrame({ ideUrl, password }: { ideUrl: string; password: strin
               onFocus={(e) => e.currentTarget.select()}
             />
           )}
-          <Button
-            size="sm"
-            variant="secondary"
-            label={copyState === "done" ? "복사됨" : "복사"}
-            onClick={copy}
-          />
-          {copyState === "failed" && (
-            <Text type="supporting" role="status">
-              복사하지 못했습니다. 선택한 값을 Ctrl+C(Mac은 Cmd+C)로 복사하세요.
-            </Text>
-          )}
+          <Button size="sm" variant="secondary" label="복사" onClick={copy} />
+          {/* 스크린 리더가 결과를 읽도록 영역은 항상 두고 문구만 바꾼다. */}
+          <Text type="supporting" role="status">
+            {copyState === "done"
+              ? "복사됨"
+              : copyState === "failed"
+                ? "복사하지 못했습니다. 선택한 값을 Ctrl+C(Mac은 Cmd+C)로 복사하세요."
+                : ""}
+          </Text>
         </HStack>
         <Button
           size="sm"

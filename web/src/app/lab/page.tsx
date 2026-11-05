@@ -11,6 +11,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { HelpIcon, LaptopIcon } from "@/components/icons";
@@ -108,6 +109,18 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
       {error != null && (
         <Banner container="section" status="warning" title="서버에 연결하지 못했습니다. 다시 시도하고 있어요." />
       )}
+      {/* 마우스를 올려야만 보이는 툴팁은 터치 기기에서 볼 수 없어 본문에도 보인다. */}
+      {me.envStatus === "MISMATCH" && me.issuesText.length > 0 && (
+        <Banner container="section" status="warning" title="내 환경이 수업과 다릅니다">
+          <VStack gap={1}>
+            {me.issuesText.map((line, i) => (
+              <Text key={i} type="supporting">
+                {line}
+              </Text>
+            ))}
+          </VStack>
+        </Banner>
+      )}
       {resumed && !resumedDismissed && (
         <Banner
           container="section"
@@ -133,7 +146,8 @@ function Lab({ token, resumed }: { token: string; resumed: boolean }) {
               <EmptyState
                 title="수업이 종료되었습니다"
                 description="작성한 코드는 남아 있어요. 아래 버튼으로 내려받을 수 있어요."
-                actions={<Button variant="primary" label="코드 zip 다운로드" href={zipUrl} />}
+                // 파일 주소라 Next 링크가 아닌 일반 앵커로 둔다. Next 링크는 화면에 보이면 RSC 조각(.../code.zip/__next._tree.txt)을 미리 받아 404가 난다.
+                actions={<Button variant="primary" label="코드 zip 다운로드" href={zipUrl} as="a" />}
               />
             </Center>
           ) : isIdeUrlSafe ? (
