@@ -57,9 +57,10 @@ async function api(method, url, body) {
 }
 
 // 처음 정하는 PIN은 확인 칸이 없어서, 가려 둔 채로 잘못 치면 본인도 모르는 PIN이 된다. 필요할 때 볼 수 있게 한다.
-document.getElementById('showPin').addEventListener('change', function (ev) {
-  document.getElementById('pin').style.webkitTextSecurity = ev.target.checked ? 'none' : 'disc';
-});
+function applyPinVisibility() {
+  document.getElementById('pin').style.webkitTextSecurity = document.getElementById('showPin').checked ? 'none' : 'disc';
+}
+document.getElementById('showPin').addEventListener('change', applyPinVisibility);
 
 // 요청이 끝나기 전에 다시 보내면 토큰이 두 번 새로 발급되어 먼저 받은 화면이 404가 된다.
 let joining = false;
@@ -116,6 +117,10 @@ document.getElementById('joinForm').addEventListener('submit', async function (e
 window.addEventListener('pageshow', function (ev) {
   joining = false;
   document.getElementById('joinBtn').disabled = false;
+  // 뒤로 가기에서 Chrome은 "PIN 보이기" 체크만 되살리고 칸은 다시 가린다. 체크와 화면이 어긋나지 않게,
+  // 공용 PC의 다음 사람이 가린 상태로 시작하게 끈다.
+  document.getElementById('showPin').checked = false;
+  applyPinVisibility();
   if (ev.persisted) {
     const msg = document.getElementById('msg');
     msg.textContent = '';
