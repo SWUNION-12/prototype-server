@@ -101,7 +101,7 @@ class AgentRepairIT {
 			assertThat(c.getStatus()).as("오류: %s", c.getErrorSummary()).isEqualTo(CourseStatus.READY);
 
 			// 시나리오 A: 학생이 패키지를 지움 → 점검 불일치 → 에이전트 복구 → 서버 재점검 OK
-			StudentSession a = sessionService.join(c.getEntryCode(), "학생A");
+			StudentSession a = sessionService.join(c.getEntryCode(), "학생A", "1234").session();
 			joined.add(a);
 			exec(a, List.of("uv", "pip", "uninstall", "--python", "/opt/venv/bin/python", "six"));
 			CheckResult broken = checker.checkAndRecord(a);
@@ -120,7 +120,7 @@ class AgentRepairIT {
 			assertThat(freshA.getEnvStatus()).isEqualTo(EnvStatus.OK);
 
 			// 시나리오 B: 패키지를 지우고 가상환경 쓰기 권한을 없앰 → coder 복구가 실패 → 서버가 강사에게 넘김
-			StudentSession b = sessionService.join(c.getEntryCode(), "학생B");
+			StudentSession b = sessionService.join(c.getEntryCode(), "학생B", "1234").session();
 			joined.add(b);
 			exec(b, List.of("uv", "pip", "uninstall", "--python", "/opt/venv/bin/python", "six"));
 			exec(b, List.of("chmod", "-R", "a-w", "/opt/venv"));

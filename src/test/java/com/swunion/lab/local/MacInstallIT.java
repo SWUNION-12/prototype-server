@@ -113,7 +113,7 @@ class MacInstallIT {
 				Thread.sleep(1000);
 			}
 			assertThat(c.getStatus()).as("오류: %s", c.getErrorSummary()).isEqualTo(CourseStatus.READY);
-			student = sessionService.join(c.getEntryCode(), "맥학생");
+			student = sessionService.join(c.getEntryCode(), "맥학생", "1234").session();
 			String token = student.getToken();
 			String base = "http://127.0.0.1:" + PORT;
 

@@ -1,6 +1,7 @@
 package com.swunion.lab.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.DockerClient;
 import com.swunion.lab.course.Course;
@@ -87,9 +88,10 @@ class JoinIT {
 			}
 			assertThat(c.getStatus()).as("오류: %s", c.getErrorSummary()).isEqualTo(CourseStatus.READY);
 
-			StudentSession a = sessionService.join(c.getEntryCode(), "학생A");
+			String code = c.getEntryCode();
+			StudentSession a = sessionService.join(code, "학생A", "1234").session();
 			joined.add(a);
-			StudentSession b = sessionService.join(c.getEntryCode(), "학생B");
+			StudentSession b = sessionService.join(code, "학생B", "5678").session();
 			joined.add(b);
 			log.info("컨테이너 기동 시간: A={}ms, B={}ms", a.getStartupMillis(), b.getStartupMillis());
 
@@ -111,6 +113,20 @@ class JoinIT {
 			assertThat(cookie(okB)).as("B 성공").contains("code-server-session");
 			assertThat(cookie(badA)).as("A에 B 비밀번호").doesNotContain("code-server-session");
 			assertThat(cookie(badB)).as("B에 A 비밀번호").doesNotContain("code-server-session");
+
+			// 같은 이름(공백·대소문자 무시)과 PIN으로 돌아오면 돌고 있는 원래 컨테이너에 새 토큰으로 붙는다.
+			JoinResult back = sessionService.join(code, " 학생a ", "1234");
+			joined.add(back.session());
+			assertThat(back.resumed()).isTrue();
+			assertThat(back.session().getId()).isEqualTo(a.getId());
+			assertThat(back.session().getContainerId()).isEqualTo(a.getContainerId());
+			assertThat(back.session().getHostPort()).isEqualTo(a.getHostPort());
+			assertThat(back.session().getIdePassword()).isEqualTo(a.getIdePassword());
+			assertThat(back.session().getToken()).isNotEqualTo(a.getToken());
+			assertThatThrownBy(() -> sessionService.byToken(a.getToken())).isInstanceOf(SessionNotFoundException.class);
+			assertThat(status("GET", a.getHostPort(), "/healthz", null)).isEqualTo(200);
+			assertThatThrownBy(() -> sessionService.join(code, "학생A", "0000")).isInstanceOfSatisfying(
+					JoinException.class, e -> assertThat(e.status()).isEqualTo(403));
 		}
 		finally {
 			for (StudentSession s : joined) {

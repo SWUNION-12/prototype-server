@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class StudentController {
 
-	public record JoinRequest(String entryCode, String name) {
+	public record JoinRequest(String entryCode, String name, String pin) {
 	}
 
 	public record HelpBody(String errorText) {
@@ -32,9 +32,14 @@ public class StudentController {
 		this.help = help;
 	}
 
+	// 새 세션은 201, 같은 이름과 PIN으로 돌아오면 200. PIN 틀림 403, 잠김 429, 형식 오류 400은 JoinException이 정한다.
 	@PostMapping("/api/join")
-	Map<String, String> join(@RequestBody JoinRequest req) {
-		return Map.of("token", service.join(req.entryCode(), req.name()).getToken());
+	ResponseEntity<Map<String, Object>> join(@RequestBody JoinRequest req) {
+		JoinResult r = service.join(req.entryCode(), req.name(), req.pin());
+		Map<String, Object> body = new LinkedHashMap<>();
+		body.put("token", r.session().getToken());
+		body.put("resumed", r.resumed());
+		return ResponseEntity.status(r.resumed() ? HttpStatus.OK : HttpStatus.CREATED).body(body);
 	}
 
 	// containerId, 다른 학생의 토큰, 파일 경로는 싣지 않는다.

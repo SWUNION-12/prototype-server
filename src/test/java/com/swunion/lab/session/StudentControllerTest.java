@@ -1,5 +1,6 @@
 package com.swunion.lab.session;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -22,6 +23,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest(properties = {
 		"spring.config.import=optional:file:./build/no-such.env[.properties]",
@@ -55,10 +57,11 @@ class StudentControllerTest {
 		when(health.awaitHealthy(anyInt(), any())).thenReturn(true);
 
 		String body = mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"entryCode\":\"CTRL01\",\"name\":\"철수\"}"))
-				.andExpect(status().isOk()).andExpect(jsonPath("$.token").isString())
+				.content("{\"entryCode\":\"CTRL01\",\"name\":\"철수\",\"pin\":\"1234\"}"))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.token").isString())
+				.andExpect(jsonPath("$.resumed").value(false))
 				.andReturn().getResponse().getContentAsString();
-		String token = body.replaceAll(".*\"token\":\"([0-9a-f]{64})\".*", "$1");
+		String token = tokenOf(body);
 
 		mvc.perform(get("/api/s/" + token)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("철수"))
@@ -96,8 +99,70 @@ class StudentControllerTest {
 	@Test
 	void badCodeIs400AndUnknownTokenIs404() throws Exception {
 		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"entryCode\":\"NOPE00\",\"name\":\"철수\"}"))
+				.content("{\"entryCode\":\"NOPE00\",\"name\":\"철수\",\"pin\":\"1234\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("입장 코드")));
 		mvc.perform(get("/api/s/deadbeef")).andExpect(status().isNotFound());
+	}
+
+	private static String tokenOf(String body) {
+		return body.replaceAll(".*\"token\":\"([0-9a-f]{64})\".*", "$1");
+	}
+
+	private ResultActions join(String code, String name, String pin) throws Exception {
+		return mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entryCode\":\"" + code + "\",\"name\":\"" + name + "\",\"pin\":\"" + pin + "\"}"));
+	}
+
+	private Course readyCourse(String code, String image) {
+		Course c = new Course("파이썬 기초", "3.12", "six==1.16.0");
+		c.setStatus(CourseStatus.READY);
+		c.setEntryCode(code);
+		c.setImageName(image);
+		return courses.save(c);
+	}
+
+	@Test
+	void rejoinIs200WithANewTokenAndTheOldTokenStopsWorkingEverywhere() throws Exception {
+		readyCourse("CTRL03", "x/course-3:1");
+		when(docker.createAndStart(any())).thenReturn("cid-rejoin");
+		when(docker.hostPort("cid-rejoin", 8080)).thenReturn(40200);
+		when(docker.isRunning("cid-rejoin")).thenReturn(true);
+		when(health.awaitHealthy(anyInt(), any())).thenReturn(true);
+
+		String oldToken = tokenOf(join("CTRL03", "민지", "4321").andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString());
+		String newToken = tokenOf(join("CTRL03", " 민지 ", "4321").andExpect(status().isOk())
+				.andExpect(jsonPath("$.resumed").value(true))
+				.andReturn().getResponse().getContentAsString());
+
+		assertThat(newToken).matches("[0-9a-f]{64}").isNotEqualTo(oldToken);
+		mvc.perform(get("/api/s/" + oldToken)).andExpect(status().isNotFound());
+		mvc.perform(get("/l/" + oldToken + "/install.sh")).andExpect(status().isNotFound());
+		mvc.perform(get("/api/s/" + newToken)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("민지"));
+		mvc.perform(get("/l/" + newToken + "/install.sh")).andExpect(status().isOk());
+	}
+
+	@Test
+	void wrongPinIs403LockedIs429AndBadFormatIs400() throws Exception {
+		readyCourse("CTRL04", "x/course-4:1");
+		when(docker.createAndStart(any())).thenReturn("cid-pin");
+		when(docker.hostPort("cid-pin", 8080)).thenReturn(40300);
+		when(health.awaitHealthy(anyInt(), any())).thenReturn(true);
+		join("CTRL04", "수빈", "1111").andExpect(status().isCreated());
+
+		join("CTRL04", "수빈", "12a4").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error").value(containsString("PIN")));
+		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entryCode\":\"CTRL04\",\"name\":\"수빈\"}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("PIN")));
+		join("CTRL04", "수빈", "0000").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error").value(containsString("남은 기회 4번")))
+				.andExpect(jsonPath("$.token").doesNotExist());
+		for (int i = 0; i < 4; i++) {
+			join("CTRL04", "수빈", "0000").andExpect(status().isForbidden());
+		}
+		join("CTRL04", "수빈", "1111").andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.error").value(containsString("분 뒤")))
+				.andExpect(jsonPath("$.token").doesNotExist());
 	}
 }

@@ -9,9 +9,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
+import org.hibernate.annotations.ColumnDefault;
 
+// 한 수업 안에서 이름 키는 겹치지 않는다. 이 기능 전에 만든 행은 name_key가 NULL이라 중복이 있어도 걸리지 않는다
+// (H2는 고유 제약에서 NULL끼리 다르게 본다).
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = { "course_id", "name_key" }))
 public class StudentSession {
 
 	@Id
@@ -44,6 +50,14 @@ public class StudentSession {
 	private Instant createdAt;
 	// 볼륨이 사라져 빈 볼륨으로 컨테이너를 다시 만든 시각. null이면 작업 공간이 이어진 것이다.
 	private Instant workspaceLostAt;
+	// 같은 학생인지 가르는 키(앞뒤 공백 제거 + 소문자). 이 기능 전에 만든 행은 null이고 되찾기에 성공하면 채운다.
+	private String nameKey;
+	// PIN의 BCrypt 해시. null이면 다음 입장이 PIN을 새로 정한다(강사가 초기화했거나 이 기능 전에 만든 세션).
+	private String pinHash;
+	// 기존 행이 있는 DB에 NOT NULL 열을 더하려면 기본값이 있어야 한다(ddl-auto=update).
+	@ColumnDefault("0")
+	private int failedPinAttempts;
+	private Instant pinLockedUntil;
 
 	protected StudentSession() {
 	}
@@ -54,6 +68,14 @@ public class StudentSession {
 		this.token = token;
 		this.idePassword = idePassword;
 		this.createdAt = Instant.now();
+	}
+
+	/** PIN 입장으로 만드는 새 행. 이름 키와 PIN 해시를 처음부터 갖는다. */
+	public StudentSession(Course course, String displayName, String nameKey, String token, String idePassword,
+			String pinHash) {
+		this(course, displayName, token, idePassword);
+		this.nameKey = nameKey;
+		this.pinHash = pinHash;
 	}
 
 	public Long getId() { return id; }
@@ -89,4 +111,9 @@ public class StudentSession {
 	public void setLastEscalatedSignature(String lastEscalatedSignature) { this.lastEscalatedSignature = lastEscalatedSignature; }
 	public Instant getCreatedAt() { return createdAt; }
 	public Instant getWorkspaceLostAt() { return workspaceLostAt; }
+	// PIN 관련 값은 읽기만 한다. 쓰기는 SessionRepository의 대상 업데이트로만 한다(R13).
+	public String getNameKey() { return nameKey; }
+	public String getPinHash() { return pinHash; }
+	public int getFailedPinAttempts() { return failedPinAttempts; }
+	public Instant getPinLockedUntil() { return pinLockedUntil; }
 }

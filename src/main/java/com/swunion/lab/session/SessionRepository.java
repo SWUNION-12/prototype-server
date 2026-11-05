@@ -122,4 +122,61 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.workspaceLostAt = :at where s.id = :id and s.workspaceLostAt is null")
 	int markWorkspaceLost(@Param("id") long id, @Param("at") Instant at);
+
+	// 아래는 PIN 입장·되찾기의 쓰기다. 행을 넣은 순간부터 같은 이름의 다른 입장, 점검, 에이전트가 같은 행을 쓰므로
+	// 전부 자기 컬럼만 바꾼다.
+
+	/** join이 행을 넣은 직후 볼륨(=컨테이너) 이름을 정한다. 이름에 세션 id가 들어가 insert 뒤에야 알 수 있다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.volumeName = :volume where s.id = :id")
+	int updateVolumeName(@Param("id") long id, @Param("volume") String volume);
+
+	/** 되찾기 성공 뒤 예전 토큰을 끊는다. 학생 화면·설치 링크가 모두 토큰으로 세션을 찾으므로 함께 끊긴다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.token = :token where s.id = :id")
+	int rotateToken(@Param("id") long id, @Param("token") String token);
+
+	/** 이 기능 전에 만든 행이 처음 되찾아질 때 이름 키를 채운다. 이미 있으면 그대로 둔다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.nameKey = :key where s.id = :id and s.nameKey is null")
+	int setNameKey(@Param("id") long id, @Param("key") String key);
+
+	/** PIN이 비어 있던 세션(초기화됐거나 이 기능 전에 만든 세션)에 받은 PIN을 정한다. 실패 기록도 비운다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.pinHash = :hash, s.failedPinAttempts = 0, s.pinLockedUntil = null"
+			+ " where s.id = :id")
+	int setPin(@Param("id") long id, @Param("hash") String hash);
+
+	/**
+	 * PIN 실패를 하나 올리고, 이번 실패로 MAX_FAILURES번에 닿으면 lockUntil까지 잠근다. 읽고 쓰는 사이에 다른 실패가
+	 * 끼어도 횟수를 잃거나 잠금을 놓치지 않게 한 문장으로 한다. SET 오른쪽의 failedPinAttempts는 갱신 전 값이다.
+	 */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.failedPinAttempts = s.failedPinAttempts + 1,"
+			+ " s.pinLockedUntil = case when s.failedPinAttempts + 1 >= " + PinPolicy.MAX_FAILURES
+			+ " then :lockUntil else s.pinLockedUntil end where s.id = :id")
+	int recordPinFailure(@Param("id") long id, @Param("lockUntil") Instant lockUntil);
+
+	/** PIN이 맞았거나 잠금이 풀렸을 때. 이미 비어 있으면 0행이라 쓰기가 일어나지 않는다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.failedPinAttempts = 0, s.pinLockedUntil = null"
+			+ " where s.id = :id and (s.failedPinAttempts <> 0 or s.pinLockedUntil is not null)")
+	int clearPinFailures(@Param("id") long id);
+
+	/** 강사의 PIN 초기화. 다음에 그 이름으로 들어오는 사람이 새 PIN을 정한다. */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update StudentSession s set s.pinHash = null, s.failedPinAttempts = 0, s.pinLockedUntil = null"
+			+ " where s.id = :id")
+	int resetPin(@Param("id") long id);
+
+	/** 방금 기록한 실패 횟수. 엔티티 전체(점검 결과 JSON 등)를 읽지 않으려고 한 컬럼만 읽는다. */
+	@Query("select s.failedPinAttempts from StudentSession s where s.id = :id")
+	Optional<Integer> findFailedPinAttempts(@Param("id") long id);
 }

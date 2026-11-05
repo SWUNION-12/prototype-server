@@ -55,6 +55,11 @@ class SessionServiceTest {
 		ready = newCourse("ABC123", CourseStatus.READY);
 	}
 
+	/** 이 클래스는 PIN이 아닌 입장·컨테이너 동작을 본다. PIN 흐름은 SessionJoinPinTest가 본다. */
+	private StudentSession join(String code, String name) {
+		return service.join(code, name, "1234").session();
+	}
+
 	private Course newCourse(String code, CourseStatus status) {
 		Course c = new Course("수업", "3.12", "six==1.16.0");
 		c.setStatus(status);
@@ -65,8 +70,8 @@ class SessionServiceTest {
 
 	@Test
 	void joinCreatesContainerWithLimitsAndUniqueSecrets() {
-		StudentSession a = service.join("ABC123", " 철수 ");
-		StudentSession b = service.join("ABC123", "영희");
+		StudentSession a = join("ABC123", " 철수 ");
+		StudentSession b = join("ABC123", "영희");
 
 		assertThat(a.getDisplayName()).isEqualTo("철수");
 		assertThat(a.getToken()).matches("[0-9a-f]{64}").isNotEqualTo(b.getToken());
@@ -96,7 +101,7 @@ class SessionServiceTest {
 	@Test
 	void unhealthyStartupStillReturnsSessionWithoutStartupMillis() {
 		healthy = false;
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		assertThat(s.getStartupMillis()).isNull();
 		assertThat(s.getContainerId()).isNotNull();
 	}
@@ -104,25 +109,25 @@ class SessionServiceTest {
 	@Test
 	void rejectsUnknownOrNotReadyCourse() {
 		newCourse("BUILD1", CourseStatus.BUILDING);
-		assertThatThrownBy(() -> service.join("ZZZZZZ", "철수")).isInstanceOf(JoinException.class);
-		assertThatThrownBy(() -> service.join("BUILD1", "철수")).isInstanceOf(JoinException.class);
-		assertThatThrownBy(() -> service.join(null, "철수")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("ZZZZZZ", "철수")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("BUILD1", "철수")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join(null, "철수")).isInstanceOf(JoinException.class);
 		assertThat(docker.specs).isEmpty();
 	}
 
 	@Test
 	void rejectsBlankOrLongName() {
-		assertThatThrownBy(() -> service.join("ABC123", "")).isInstanceOf(JoinException.class);
-		assertThatThrownBy(() -> service.join("ABC123", "   ")).isInstanceOf(JoinException.class);
-		assertThatThrownBy(() -> service.join("ABC123", null)).isInstanceOf(JoinException.class);
-		assertThatThrownBy(() -> service.join("ABC123", "가".repeat(31))).isInstanceOf(JoinException.class);
-		assertThat(service.join("ABC123", "가".repeat(30)).getId()).isNotNull();
+		assertThatThrownBy(() -> join("ABC123", "")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("ABC123", "   ")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("ABC123", null)).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("ABC123", "가".repeat(31))).isInstanceOf(JoinException.class);
+		assertThat(join("ABC123", "가".repeat(30)).getId()).isNotNull();
 	}
 
 	@Test
 	void createFailureDeletesRowAndRemovesVolume() {
 		docker.failCreate = true;
-		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class)
+		assertThatThrownBy(() -> join("ABC123", "철수")).isInstanceOf(JoinException.class)
 				.hasMessageContaining("컨테이너를 만들지 못했습니다");
 		assertThat(sessions.count()).isZero();
 		// 컨테이너는 만들어지지 않았으므로 id로 지울 것이 없고, 이 join 전용 볼륨만 지운다.
@@ -133,7 +138,7 @@ class SessionServiceTest {
 	@Test
 	void failureAfterCreateRemovesContainerByIdAndVolume() {
 		docker.failHostPort = true;
-		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class);
+		assertThatThrownBy(() -> join("ABC123", "철수")).isInstanceOf(JoinException.class);
 		assertThat(sessions.count()).isZero();
 		assertThat(docker.removed).containsExactly("c" + docker.specs.get(0).labels().get("swunion.session"));
 		assertThat(docker.removedVolumes).containsExactly(docker.specs.get(0).volumeName());
@@ -141,13 +146,13 @@ class SessionServiceTest {
 
 	@Test
 	void sameSessionIdAfterIdResetGetsDifferentNames() {
-		StudentSession first = service.join("ABC123", "철수");
+		StudentSession first = join("ABC123", "철수");
 		long firstId = first.getId();
 		String firstName = first.getVolumeName();
 		sessions.deleteAll();
 		sessions.flush();
 		em.createNativeQuery("ALTER TABLE student_session ALTER COLUMN id RESTART WITH " + firstId).executeUpdate();
-		StudentSession second = service.join("ABC123", "영희");
+		StudentSession second = join("ABC123", "영희");
 		assertThat(second.getId()).isEqualTo(firstId);
 		assertThat(second.getVolumeName()).isNotEqualTo(firstName);
 		assertThat(docker.specs.get(1).name()).isNotEqualTo(docker.specs.get(0).name());
@@ -155,13 +160,13 @@ class SessionServiceTest {
 
 	@Test
 	void specToStringMasksEnvValues() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		assertThat(docker.specs.get(0).toString()).contains("PASSWORD=***").doesNotContain(s.getIdePassword());
 	}
 
 	@Test
 	void byTokenAndNeedsHelp() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		assertThat(service.byToken(s.getToken()).getId()).isEqualTo(s.getId());
 		assertThatThrownBy(() -> service.byToken("nope")).isInstanceOf(SessionNotFoundException.class);
 		service.flagNeedsHelp(s.getId(), "막힘");
@@ -174,13 +179,13 @@ class SessionServiceTest {
 
 	@Test
 	void ideUrlUsesPublicHost() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		assertThat(service.ideUrl(s)).isEqualTo("http://lab.example.com:" + s.getHostPort() + "/");
 	}
 
 	@Test
 	void restartPersistsNewHostPort() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		int old = s.getHostPort();
 		docker.ports.put(s.getContainerId(), 55555);
 		probedPorts.clear();
@@ -197,7 +202,7 @@ class SessionServiceTest {
 
 	@Test
 	void restartDoesNotClobberNeedsHelpSetWhileRestarting() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		// 재시작을 기다리는 동안 다른 요청(학생 호출)이 needsHelp를 바꾼 상황
 		docker.onRestart = () -> service.flagNeedsHelp(s.getId(), "학생 호출");
 
@@ -211,7 +216,7 @@ class SessionServiceTest {
 
 	@Test
 	void agentWritesTouchOnlyTheirOwnColumns() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		service.markRepairing(s.getId());
 		assertThat(sessions.findById(s.getId()).orElseThrow().getEnvStatus()).isEqualTo(EnvStatus.REPAIRING);
 
@@ -240,7 +245,7 @@ class SessionServiceTest {
 			sessions.updateEscalation(id, "재점검 실패: MISSING:six", "MISSING:six");
 		};
 
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 
 		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
 		assertThat(fresh.getStartupMillis()).isNotNull();
@@ -260,7 +265,7 @@ class SessionServiceTest {
 		// 입장 확인(READY) 뒤, 컨테이너를 만드는 사이에 강사가 수업을 종료한 상황
 		docker.onCreate = () -> courses.updateStatusIf(ready.getId(), CourseStatus.READY, CourseStatus.ENDED);
 
-		assertThatThrownBy(() -> service.join("ABC123", "철수")).isInstanceOf(JoinException.class)
+		assertThatThrownBy(() -> join("ABC123", "철수")).isInstanceOf(JoinException.class)
 				.hasMessage("종료된 수업입니다");
 
 		String containerId = "c" + docker.specs.get(0).labels().get("swunion.session");
@@ -273,7 +278,7 @@ class SessionServiceTest {
 
 	@Test
 	void restartRefusedAfterCourseEnded() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		courses.updateStatusIf(ready.getId(), CourseStatus.READY, CourseStatus.ENDED);
 		probedPorts.clear();
 
@@ -285,7 +290,7 @@ class SessionServiceTest {
 
 	@Test
 	void restartRecreatesAContainerThatDisappearedFromDocker() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		String volume = s.getVolumeName();
 		docker.containerExistsAnswer = false;
 		probedPorts.clear();
@@ -304,7 +309,7 @@ class SessionServiceTest {
 
 	@Test
 	void restartReturnsFalseWithoutWaitingWhenDockerRefuses() {
-		StudentSession s = service.join("ABC123", "철수");
+		StudentSession s = join("ABC123", "철수");
 		docker.restartFailure = new DockerOperationException("restart refused");
 		probedPorts.clear();
 

@@ -88,7 +88,7 @@ class CheckIT {
 				Thread.sleep(1000);
 			}
 			assertThat(c.getStatus()).as("오류: %s", c.getErrorSummary()).isEqualTo(CourseStatus.READY);
-			s = sessionService.join(c.getEntryCode(), "학생");
+			s = sessionService.join(c.getEntryCode(), "학생", "1234").session();
 			final StudentSession joined = s;
 			String id = s.getContainerId();
 
