@@ -223,7 +223,7 @@ function DeleteCourse({
       // 못 지운 자원이 있으면 강사가 이름을 읽을 수 있게 이 화면에 머문다.
       if (r.failures.length === 0) {
         showToast({ body: "수업을 삭제했습니다." });
-        router.push("/admin");
+        router.push("/instructor");
       }
     } catch (e) {
       setOpen(false);
@@ -270,7 +270,7 @@ function DeleteCourse({
                   : undefined
               }
             />
-            <Button label="수업 목록으로" href="/admin" />
+            <Button label="수업 목록으로" href="/instructor" />
           </VStack>
         )}
       </VStack>

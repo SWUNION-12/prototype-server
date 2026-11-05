@@ -26,7 +26,7 @@ function CourseCard({ course }: { course: Course }) {
   return (
     <ClickableCard
       label={`${course.name} 열기`}
-      href={`/admin/course?id=${course.id}`}
+      href={`/instructor/course?id=${course.id}`}
       padding={6}
       height="100%"
     >
@@ -56,7 +56,7 @@ function CourseCard({ course }: { course: Course }) {
   );
 }
 
-export default function AdminHomePage() {
+export default function InstructorHomePage() {
   const { data: list, error } = usePoll(courses.list, 3000, (e) => e instanceof ApiError && e.status === 401);
 
   return (
@@ -68,7 +68,7 @@ export default function AdminHomePage() {
           <Button
             variant="primary"
             label="프로젝트 생성하기"
-            href="/admin/new"
+            href="/instructor/new"
             icon={<Icon icon={PlusIcon} size="sm" />}
           />
         </HStack>

@@ -94,7 +94,7 @@ function NotFound() {
         title="수업을 찾을 수 없습니다."
         description="삭제됐거나 주소가 올바르지 않습니다. 목록에서 수업을 골라 다시 열어 주세요."
       />
-      <Button label="수업 목록으로" href="/admin" />
+      <Button label="수업 목록으로" href="/instructor" />
     </VStack>
   );
 }
@@ -108,7 +108,7 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
     (e) => e instanceof ApiError && (e.status === 404 || e.status === 401),
   );
 
-  const base = `/admin/course?id=${courseId}`;
+  const base = `/instructor/course?id=${courseId}`;
 
   return (
     <VStack className="app-root">
@@ -120,7 +120,7 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
               variant="ghost"
               size="sm"
               label="이전"
-              href="/admin"
+              href="/instructor"
               icon={<Icon icon="chevronLeft" size="sm" />}
             />
           </HStack>

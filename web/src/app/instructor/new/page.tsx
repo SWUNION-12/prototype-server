@@ -183,7 +183,7 @@ export default function NewProjectPage() {
         pythonVersion: python,
         packages: packages.join("\n"),
       });
-      router.push(`/admin/course?id=${course.id}`);
+      router.push(`/instructor/course?id=${course.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "프로젝트를 만들지 못했습니다.");
       setBusy(false);
@@ -226,7 +226,7 @@ export default function NewProjectPage() {
 
         <HStack hAlign="end" gap={2}>
           {step === 0 ? (
-            <Button label="이전" href="/admin" />
+            <Button label="이전" href="/instructor" />
           ) : (
             <Button label="이전" onClick={() => setStep(step - 1)} isDisabled={busy} />
           )}

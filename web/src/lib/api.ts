@@ -18,19 +18,44 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { body?: unknown };
+type Options = {
+  /** JSON으로 보낼 본문 */
+  body?: unknown;
+  /** 폼(application/x-www-form-urlencoded)으로 보낼 값. 로그인만 쓴다. */
+  form?: Record<string, string>;
+};
 
-async function request<T>(method: string, url: string, { body }: Options = {}): Promise<T> {
+// 서버가 응답마다 심어 두는 CSRF 쿠키(HttpOnly 아님). 상태를 바꾸는 요청은 이 값을 헤더로 되돌려 보내야 한다.
+// 다른 사이트는 이 쿠키를 읽지 못하므로 헤더를 만들 수 없다. 로그인하면 값이 바뀌므로 요청할 때마다 새로 읽는다.
+const CSRF_COOKIE = "XSRF-TOKEN";
+const CSRF_HEADER = "X-XSRF-TOKEN";
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function csrfToken(): string | null {
+  for (const part of document.cookie.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === CSRF_COOKIE) return part.slice(eq + 1).trim();
+  }
+  return null;
+}
+
+async function request<T>(method: string, url: string, { body, form }: Options = {}): Promise<T> {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  let payload: BodyInit | undefined;
+  if (form !== undefined) {
+    payload = new URLSearchParams(form);
+  } else if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    payload = JSON.stringify(body);
+  }
+  if (UNSAFE_METHODS.has(method)) {
+    const token = csrfToken();
+    if (token) headers[CSRF_HEADER] = token;
+  }
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    res = await fetch(url, { method, headers, body: payload });
   } catch {
     throw new ApiError(0, "서버에 연결하지 못했습니다.");
   }
@@ -56,12 +81,38 @@ async function request<T>(method: string, url: string, { body }: Options = {}): 
 
 // ---- 강사 ----
 
-// 강사 계정은 브라우저 로그인 창이 받아 같은 주소의 요청에 알아서 붙인다. 화면 코드는 계정을 만지지 않는다.
-// 401은 이미 열린 화면에서 계정이 사라졌을 때뿐이라, 이동하지 않고 새로고침 안내만 한다.
+export const INSTRUCTOR_HOME = "/instructor";
+export const LOGIN_PATH = "/instructor/login";
+
+// 강사 로그인은 서버 세션(HttpOnly 쿠키)이다. 화면 코드는 계정을 저장하지 않는다.
+export const auth = {
+  /** 로그인돼 있으면 계정 이름, 아니면 401. 첫 응답에서 CSRF 쿠키도 받는다. */
+  me: () => request<{ username: string }>("GET", "/api/auth/me"),
+  login: (username: string, password: string) =>
+    request<void>("POST", "/api/auth/login", { form: { username, password } }),
+  logout: () => request<void>("POST", "/api/auth/logout"),
+};
+
+let movingToLogin = false;
+
+// 화면을 연 채 세션이 끝나면(8시간 동안 요청이 없거나 서버를 다시 켬) 로그인 화면으로 보내고, 로그인 뒤 이 화면으로 돌아온다.
+// 여러 주기 조회가 함께 401을 받아도 한 번만 이동한다.
+function moveToLogin() {
+  if (movingToLogin) return;
+  movingToLogin = true;
+  const here = window.location.pathname + window.location.search;
+  window.location.replace(`${LOGIN_PATH}?next=${encodeURIComponent(here)}`);
+}
+
+// 401이면 로그인 화면으로 옮긴다. 배너는 이동하기 전 잠깐, 또는 이동이 막혔을 때 보인다.
 function instructor<T>(method: string, url: string, body?: unknown): Promise<T> {
   return request<T>(method, url, { body }).catch((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) {
-      throw new ApiError(401, "강사 로그인이 필요합니다. 페이지를 새로고침해 로그인해 주세요.");
+      moveToLogin();
+      throw new ApiError(
+        401,
+        "강사 로그인이 필요합니다. 로그인 화면으로 이동합니다. 이동하지 않으면 페이지를 새로고침해 주세요.",
+      );
     }
     throw e;
   });
