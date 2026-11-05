@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -201,6 +202,28 @@ class SessionJoinPinTest {
 		assertThat(row(id).getDisplayName()).as("처음 입력한 표시 이름은 그대로").isEqualTo("Kim");
 		assertThat(row(id).getNameKey()).isEqualTo("kim");
 		assertThat(docker.specs).hasSize(1);
+	}
+
+	@Test
+	void nameKeyTreatsDecomposedHangulAsTheSameName() {
+		// macOS 등에서 복사한 한글은 자모가 풀린 NFD일 수 있다. 화면에는 똑같이 보인다.
+		String composed = "김철수";
+		String decomposed = Normalizer.normalize(composed, Normalizer.Form.NFD);
+		assertThat(decomposed).isNotEqualTo(composed);
+		long id = service.join(CODE, composed, "1234").session().getId();
+
+		JoinResult again = service.join(CODE, " " + decomposed + " ", "1234");
+
+		assertThat(again.resumed()).isTrue();
+		assertThat(again.session().getId()).isEqualTo(id);
+		assertThat(rejected(decomposed, "0000").status()).as("같은 학생이라 PIN 확인을 탄다").isEqualTo(403);
+		assertThat(sessions.count()).isEqualTo(1);
+		assertThat(SessionService.nameKey(decomposed)).isEqualTo(composed);
+		// 반대로 NFD로 처음 들어온 이름도 NFC 키로 저장되어 NFC 입력과 맞는다.
+		long other = service.join(CODE, Normalizer.normalize("이영희", Normalizer.Form.NFD), "5678").session().getId();
+		assertThat(row(other).getNameKey()).isEqualTo("이영희");
+		assertThat(service.join(CODE, "이영희", "5678").session().getId()).isEqualTo(other);
+		assertThat(docker.specs).hasSize(2);
 	}
 
 	@Test
@@ -618,6 +641,23 @@ class SessionJoinPinTest {
 		assertThat(ensurer.outcomes).containsExactly(EnsureOutcome.FAILED);
 		assertThat(docker.restarted).as("실제로 시작을 시도했다").containsExactly(first.session().getContainerId());
 		assertThat(probedPorts).isEmpty();
+	}
+
+	@Test
+	void studentDeletedWhileTheirContainerIsCreatedLeavesNoContainerOrVolume() {
+		// 강사가 입장 도중의 학생을 지운 상황: 행은 컨테이너를 기록하기 전에 사라진다. 학생 삭제는 아직 기록되지 않은
+		// 컨테이너를 모르므로, 기록하지 못한 입장 쪽이 자기가 만든 것을 치워야 한다.
+		docker.onCreate = () -> sessions.deleteAll();
+
+		JoinException e = rejected("김철수", "1234");
+
+		assertThat(e.status()).isEqualTo(409);
+		assertThat(sessions.count()).isZero();
+		assertThat(docker.specs).hasSize(1);
+		String containerId = "c" + docker.specs.get(0).labels().get("swunion.session");
+		assertThat(docker.removed).as("이 입장이 만든 컨테이너").containsExactly(containerId);
+		assertThat(docker.removedVolumes).as("이 입장 전용 볼륨").containsExactly(docker.specs.get(0).volumeName());
+		assertThat(probedPorts).as("지워진 세션의 IDE는 기다리지 않는다").isEmpty();
 	}
 
 	@Test

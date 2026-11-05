@@ -104,6 +104,14 @@ class StudentControllerTest {
 		mvc.perform(get("/api/s/deadbeef")).andExpect(status().isNotFound());
 	}
 
+	@Test
+	void joinRequestToStringHidesThePin() {
+		// DEBUG 요청 로그가 본문 객체를 찍어도 PIN은 남지 않아야 한다.
+		String printed = new StudentController.JoinRequest("CTRL09", "철수", "7391").toString();
+
+		assertThat(printed).doesNotContain("7391").contains("CTRL09").contains("철수").contains("pin=");
+	}
+
 	private static String tokenOf(String body) {
 		return body.replaceAll(".*\"token\":\"([0-9a-f]{64})\".*", "$1");
 	}

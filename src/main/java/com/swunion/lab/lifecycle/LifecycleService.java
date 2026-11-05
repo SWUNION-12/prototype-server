@@ -122,6 +122,7 @@ public class LifecycleService {
 	 * 끝난 수업을 다시 연다. 수업이 아직 ENDED인 동안 컨테이너 기록이 있는 학생마다 컨테이너를 돌게 하고 IDE 응답을
 	 * 기다린 뒤(전체 상한 resumeDeadline), 마지막에 READY로 바꾼다. 점검 스케줄러는 READY 수업만 보므로, 켜지는 중인
 	 * 컨테이너를 "IDE 중단"으로 보고 에이전트를 부르지 않는다. 한 학생이 실패해도 나머지는 계속하고 수업은 READY가 된다.
+	 * 상한까지 끝나지 않은 학생은 unhealthy(아직 켜는 중)로 세고, 그 시도는 응답 뒤에도 끊지 않고 끝까지 간다.
 	 *
 	 * @throws NotFoundException 없는 수업
 	 * @throws CourseStateException ENDED가 아닌 수업, 또는 같은 수업의 다른 작업이 진행 중
@@ -172,13 +173,15 @@ public class LifecycleService {
 					counts[Tally.RECREATED_EMPTY.ordinal()], counts[Tally.FAILED.ordinal()]);
 		}
 		finally {
-			// 상한을 넘긴 시도를 끊는다. 이미 보낸 Docker 호출은 끝까지 갈 수 있고, 끝나면 ContainerEnsurer가 포트를
-			// 저장한다. 수업은 곧 READY가 되므로 늦게 켜진 컨테이너도 그대로 쓰면 된다.
-			pool.shutdownNow();
+			// 상한은 응답만 끊는다. shutdownNow처럼 인터럽트하면 httpclient5의 Docker 호출이 중간에 실패해, 다시 만들던
+			// 컨테이너가 기록되지 않은 채 학생 볼륨 이름을 쥐고 남는다. 그러면 이후 재입장·재시작이 모두 이름 충돌로
+			// 실패한다. 돌던 시도와 큐에 남은 시도는 뒤에서 끝까지 가고, 끝나면 ContainerEnsurer가 포트를 저장한다.
+			// 수업은 곧 READY가 되므로 늦게 켜진 컨테이너도 그대로 쓰면 된다. 일이 다 끝나면 풀 스레드도 끝난다.
+			pool.shutdown();
 		}
 	}
 
-	/** 학생 한 명의 재개. 상한에 걸리면 어디까지 갔는지(컨테이너 단계를 넘었는지)로 센다. */
+	/** 학생 한 명의 재개. 상한에 걸리면 그때까지 확인한 결과로 센다. 시도 자체는 상한 뒤에도 계속된다. */
 	private final class Attempt {
 
 		private final StudentSession session;
@@ -218,25 +221,39 @@ public class LifecycleService {
 				return future.get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
 			}
 			catch (TimeoutException e) {
-				log.warn("세션 {}: 재개 상한({}ms) 안에 끝나지 않았습니다.", session.getId(), resumeDeadline.toMillis());
-				future.cancel(true);
-				return fromProgress();
+				// 시도는 취소하지 않는다. 큐에 있던 것을 cancel하면 아예 돌지 않고, 도는 것을 인터럽트하면 Docker 호출이
+				// 중간에 끊긴다(startAll의 finally 참고).
+				log.warn("세션 {}: 재개 상한({}ms) 안에 끝나지 않아 응답 뒤에도 계속 켭니다.", session.getId(),
+						resumeDeadline.toMillis());
+				return unfinished();
 			}
 			catch (ExecutionException e) {
 				log.error("세션 {} 재개 중 오류", session.getId(), e.getCause());
-				return fromProgress();
+				// 컨테이너 단계에서 예외가 났으면 켜지 못한 것이다.
+				return fromProgress(Tally.FAILED);
 			}
 			catch (InterruptedException e) {
+				// 요청 스레드가 끊겼다. 기다리기만 그만두고 시도는 그대로 둔다.
 				Thread.currentThread().interrupt();
-				future.cancel(true);
-				return fromProgress();
+				return unfinished();
 			}
 		}
 
-		/** 끝까지 보지 못했다. 컨테이너가 돌기 시작했으면 IDE 응답만 못 본 것이다. */
-		private Tally fromProgress() {
+		/** 상한까지 끝나지 않았다. 시도는 뒤에서 계속되므로 컨테이너 단계 실패가 확인된 경우만 failed다. */
+		private Tally unfinished() {
+			return fromProgress(Tally.UNHEALTHY);
+		}
+
+		/**
+		 * 끝까지 보지 못했다. 컨테이너가 돌기 시작했으면 IDE 응답만 못 본 것이다.
+		 * @param beforeContainer 컨테이너 단계가 아직 끝나지 않았을 때의 집계
+		 */
+		private Tally fromProgress(Tally beforeContainer) {
 			EnsureOutcome o = outcome;
-			if (o == null || o == EnsureOutcome.FAILED) {
+			if (o == null) {
+				return beforeContainer;
+			}
+			if (o == EnsureOutcome.FAILED) {
 				return Tally.FAILED;
 			}
 			return o == EnsureOutcome.RECREATED_EMPTY ? Tally.RECREATED_EMPTY : Tally.UNHEALTHY;

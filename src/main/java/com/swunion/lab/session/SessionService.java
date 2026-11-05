@@ -8,6 +8,7 @@ import com.swunion.lab.docker.ContainerSpec;
 import com.swunion.lab.docker.DockerGateway;
 import java.net.URI;
 import java.security.SecureRandom;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -102,8 +103,10 @@ public class SessionService {
 		return course;
 	}
 
+	// 붙여 넣은 한글은 자모가 풀린 NFD일 수 있다(macOS에서 복사한 글자 등). 화면에는 같아 보이므로 NFC로 맞춘다.
 	static String nameKey(String displayName) {
-		return displayName == null ? "" : displayName.strip().toLowerCase(Locale.ROOT);
+		return displayName == null ? ""
+				: Normalizer.normalize(displayName, Normalizer.Form.NFC).strip().toLowerCase(Locale.ROOT);
 	}
 
 	/**
@@ -238,7 +241,13 @@ public class SessionService {
 			containerId = docker.createAndStart(spec);
 			int hostPort = docker.hostPort(containerId, ContainerSpecs.IDE_PORT);
 			// containerId가 들어가는 순간부터 점검과 에이전트가 이 행을 쓴다. 이후로는 엔티티 전체를 save하지 않는다.
-			sessions.updateContainerCreated(sid, containerId, hostPort);
+			if (sessions.updateContainerCreated(sid, containerId, hostPort) == 0) {
+				// 만드는 사이 강사가 이 학생을 지웠다. 학생 삭제는 아직 기록되지 않은 이 컨테이너를 모르므로 여기서
+				// 치운다. 볼륨도 이 입장 전용 이름이고 행이 없으니 쓸 사람이 없다.
+				log.warn("세션 {}: 컨테이너를 만드는 사이 세션이 지워져 방금 만든 컨테이너와 볼륨을 지웁니다.", sid);
+				discard(sid, containerId, resourceName, false);
+				throw sessionGone();
+			}
 			// 수업 종료는 READY→ENDED로 바꾼 다음 containerId가 있는 세션만 멈춘다. 위 입장 확인과 지금 사이에
 			// 종료가 끼었다면 종료는 이 컨테이너를 못 봤을 수 있으니 직접 치운다. 순서상 둘 중 하나는 반드시 본다.
 			if (courses.findStatusById(course.getId()).orElse(null) != CourseStatus.READY) {
@@ -308,8 +317,11 @@ public class SessionService {
 	}
 
 	private StudentSession current(long sid) {
-		return sessions.findById(sid)
-				.orElseThrow(() -> new JoinException("입장하는 사이 세션이 삭제되었습니다. 다시 입장해 주세요.", 409));
+		return sessions.findById(sid).orElseThrow(SessionService::sessionGone);
+	}
+
+	private static JoinException sessionGone() {
+		return new JoinException("입장하는 사이 세션이 삭제되었습니다. 다시 입장해 주세요.", 409);
 	}
 
 	/** 이번 join이 만든 것만 지운다. 컨테이너는 id로, 볼륨은 이 join 전용 이름이라 안전하다. */

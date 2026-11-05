@@ -48,6 +48,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -332,7 +333,7 @@ class LifecycleServiceTest {
 	}
 
 	@Test
-	void resumeStopsWaitingAtTheDeadline() {
+	void resumeStopsWaitingAtTheDeadline() throws InterruptedException {
 		service = serviceWith(Duration.ofSeconds(1));
 		Course c = course("수업1", CourseStatus.ENDED, IMAGE_A);
 		StudentSession slowIde = student(c, "가영", "c1", "v1");
@@ -341,26 +342,108 @@ class LifecycleServiceTest {
 		docker.addContainer("c1", "v1", true);
 		docker.addContainer("c2", "v2", true);
 		docker.addContainer("c3", "v3", true);
-		CountDownLatch never = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		CountDownLatch backgroundDone = new CountDownLatch(2);
 		ensurer.during = s -> {
 			if (s.getId().equals(stuckDocker.getId())) {
-				await(never, Duration.ofSeconds(20));
+				await(release, Duration.ofSeconds(20));
+			}
+		};
+		ensurer.after = s -> {
+			if (s.getId().equals(stuckDocker.getId())) {
+				backgroundDone.countDown();
 			}
 		};
 		health.during = port -> {
 			if (port == slowIde.getHostPort()) {
-				await(never, Duration.ofSeconds(20));
+				await(release, Duration.ofSeconds(20));
+				backgroundDone.countDown();
 			}
 		};
 		long t0 = System.nanoTime();
+		ResumeResult r;
+		Duration took;
+		try {
+			r = service.resume(c.getId());
+			took = Duration.ofNanos(System.nanoTime() - t0);
+		}
+		finally {
+			// 상한 뒤에도 끝까지 가는 두 시도를 풀어 주고, 정리(@AfterEach) 전에 끝나기를 기다린다.
+			release.countDown();
+		}
 
-		ResumeResult r = service.resume(c.getId());
-
-		assertThat(Duration.ofNanos(System.nanoTime() - t0)).isLessThan(Duration.ofSeconds(5));
-		// 컨테이너는 돌지만 IDE 응답을 못 본 학생은 unhealthy, 컨테이너 단계에서 멈춘 학생은 failed.
-		assertThat(r).isEqualTo(new ResumeResult(1, 1, 0, 1));
+		assertThat(took).isLessThan(Duration.ofSeconds(5));
+		// 상한까지 끝나지 않은 학생은 컨테이너 단계든 IDE 대기든 아직 켜는 중이라 unhealthy로 센다.
+		assertThat(r).isEqualTo(new ResumeResult(1, 2, 0, 0));
 		assertThat(courses.findStatusById(c.getId())).contains(CourseStatus.READY);
 		assertThat(health.timeouts).allSatisfy(t -> assertThat(t).isLessThanOrEqualTo(Duration.ofSeconds(1)));
+		assertThat(backgroundDone.await(10, TimeUnit.SECONDS)).as("상한 뒤의 시도도 끝났다").isTrue();
+	}
+
+	/**
+	 * 상한은 응답만 끊고 진행 중인 시도는 끊지 않는다. httpclient5는 인터럽트를 받으면 Docker 호출 중간에 실패할 수 있어,
+	 * 다시 만들던 컨테이너가 기록되지 않은 채 학생 볼륨 이름을 쥐고 남으면 이후 모든 재입장·재시작이 이름 충돌로 실패한다.
+	 */
+	@Test
+	void resumeDeadlineLetsRunningAndQueuedStudentsFinishWithoutInterrupting() throws InterruptedException {
+		service = serviceWith(Duration.ofSeconds(1));
+		Course c = course("수업1", CourseStatus.ENDED, IMAGE_A);
+		// 풀을 다 채운 학생들이 상한을 넘겨 Docker 단계에 머물고, 나머지 한 명은 큐에서 기다린다.
+		int students = LifecycleService.RESUME_POOL_SIZE + 1;
+		List<Long> ids = new ArrayList<>();
+		for (int i = 0; i < students; i++) {
+			ids.add(student(c, "학생" + i, "c" + i, "v" + i).getId());
+			docker.addContainer("c" + i, "v" + i, false);
+			docker.portOnStart.put("c" + i, 47100 + i);
+		}
+		CountDownLatch release = new CountDownLatch(1);
+		CountDownLatch finished = new CountDownLatch(students);
+		List<Long> interrupted = new CopyOnWriteArrayList<>();
+		ensurer.during = s -> {
+			try {
+				release.await(20, TimeUnit.SECONDS);
+			}
+			catch (InterruptedException e) {
+				interrupted.add(s.getId());
+				Thread.currentThread().interrupt();
+			}
+		};
+		ensurer.after = s -> {
+			// 실제 Docker 호출(가짜 게이트웨이)까지 인터럽트 없이 갔는지 본다.
+			if (Thread.currentThread().isInterrupted()) {
+				interrupted.add(s.getId());
+			}
+			finished.countDown();
+		};
+		long t0 = System.nanoTime();
+		ResumeResult r;
+		Duration took;
+		List<Long> calledByDeadline;
+		try {
+			r = service.resume(c.getId());
+			took = Duration.ofNanos(System.nanoTime() - t0);
+			calledByDeadline = List.copyOf(ensurer.ensureCalls);
+		}
+		finally {
+			release.countDown();
+		}
+		boolean allFinished = finished.await(10, TimeUnit.SECONDS);
+
+		assertThat(took).as("응답은 상한에 맞춰 돌아온다").isLessThan(Duration.ofSeconds(5));
+		assertThat(r).as("끝나지 않은 학생은 failed가 아니라 아직 켜는 중(unhealthy)")
+				.isEqualTo(new ResumeResult(0, students, 0, 0));
+		assertThat(courses.findStatusById(c.getId())).contains(CourseStatus.READY);
+		assertThat(calledByDeadline).as("상한 때 큐에 남은 학생이 있었다").hasSizeLessThanOrEqualTo(
+				LifecycleService.RESUME_POOL_SIZE);
+		assertThat(allFinished).as("상한 뒤에도 큐에 있던 학생까지 끝까지 켠다").isTrue();
+		assertThat(ensurer.ensureCalls).containsExactlyInAnyOrderElementsOf(ids);
+		assertThat(interrupted).as("상한이 ContainerEnsurer·Docker 호출을 인터럽트하지 않는다").isEmpty();
+		// 늦게 끝난 시도도 바뀐 호스트 포트를 저장한다.
+		for (int i = 0; i < students; i++) {
+			StudentSession s = sessions.findById(ids.get(i)).orElseThrow();
+			assertThat(s.getHostPort()).isEqualTo(47100 + i);
+			assertThat(s.isContainerRunning()).isTrue();
+		}
 	}
 
 	@Test

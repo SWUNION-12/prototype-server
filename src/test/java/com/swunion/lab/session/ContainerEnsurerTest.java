@@ -425,6 +425,26 @@ class ContainerEnsurerTest {
 
 		assertThat(r.outcome()).isEqualTo(EnsureOutcome.FAILED);
 		assertThat(docker.removed).containsExactly("c" + session.getId());
+		assertThat(docker.removedVolumes).as("처음부터 있던 볼륨은 학생 코드라 지우지 않는다").isEmpty();
+	}
+
+	@Test
+	void sessionDeletedWhileRecreatingOnALostVolumeAlsoRemovesTheEmptyVolumeItCreated() {
+		// 볼륨이 없어 createAndStart가 빈 볼륨을 새로 만들었는데, 그 사이 세션 행이 지워졌다. 학생 삭제는 이미 끝나
+		// 이 볼륨을 다시 지울 쪽이 없다.
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+		docker.volumeExistsAnswer = false;
+		docker.onCreate = () -> sessions.deleteById(session.getId());
+
+		EnsureResult r = ensurer.ensureRunning(session);
+
+		assertThat(r.outcome()).isEqualTo(EnsureOutcome.FAILED);
+		String newContainer = "c" + session.getId();
+		assertThat(docker.removed).containsExactly(newContainer);
+		assertThat(docker.removedVolumes).containsExactly(VOLUME);
+		// 컨테이너가 붙은 볼륨은 지워지지 않으므로 컨테이너가 먼저다.
+		assertThat(docker.callLog).containsSubsequence("remove:" + newContainer, "removeVolume:" + VOLUME);
 	}
 
 	@Test

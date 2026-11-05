@@ -19,6 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class StudentController {
 
 	public record JoinRequest(String entryCode, String name, String pin) {
+
+		// DEBUG 요청 로그가 본문 객체를 찍어도 PIN은 남지 않게 가린다. 비었는지만 보인다.
+		@Override
+		public String toString() {
+			return "JoinRequest[entryCode=" + entryCode + ", name=" + name + ", pin=" + (pin == null ? null : "****")
+					+ "]";
+		}
 	}
 
 	public record HelpBody(String errorText) {

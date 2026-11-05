@@ -106,6 +106,11 @@ public class ContainerEnsurer {
 			if (sessions.updateContainerCreated(sid, newId, port) == 0) {
 				// 만드는 사이에 세션이 지워졌다. 기록할 곳이 없는 컨테이너를 남기지 않는다.
 				removeOwnContainer(sid, newId);
+				if (workspaceLost) {
+					// 볼륨이 없었으니 방금 createAndStart가 빈 채로 만든 것이다. 행이 지워져 이 볼륨 이름을 기억하는 곳이
+					// 없으므로 여기서 치운다. 처음부터 있던 볼륨(학생 코드)은 이 분기에 오지 않는다.
+					removeOwnEmptyVolume(sid, volumeName);
+				}
 				log.warn("세션 {}: 컨테이너를 만드는 사이 세션이 지워졌습니다.", sid);
 				return FAILED;
 			}
@@ -133,6 +138,16 @@ public class ContainerEnsurer {
 		}
 		catch (RuntimeException e) {
 			log.warn("세션 {} 방금 만든 컨테이너 정리 실패: {}", sid, e.getMessage());
+		}
+	}
+
+	/** 이번 호출이 빈 채로 만든 볼륨만 지운다. 컨테이너가 붙어 있으면 지워지지 않으므로 컨테이너를 먼저 지운 뒤 부른다. */
+	private void removeOwnEmptyVolume(long sid, String volumeName) {
+		try {
+			docker.removeVolume(volumeName);
+		}
+		catch (RuntimeException e) {
+			log.warn("세션 {} 방금 만든 빈 볼륨 정리 실패: {}", sid, e.getMessage());
 		}
 	}
 
