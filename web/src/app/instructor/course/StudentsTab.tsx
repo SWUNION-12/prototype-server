@@ -7,7 +7,7 @@ import { MoreMenu } from "@astryxdesign/core/MoreMenu";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Badge } from "@astryxdesign/core/Badge";
-import { pixel, proportional, Table, type TableColumn } from "@astryxdesign/core/Table";
+import { pixel, proportional, Table, type TableColumn, useTableRowExpansion } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
@@ -17,7 +17,15 @@ import { useMemo, useState } from "react";
 import { useCourse } from "@/components/admin/CourseContext";
 import { EnvBadge } from "@/components/StatusBadge";
 import { ApiError, courses } from "@/lib/api";
-import { formatTime, latestReport, LOCAL_LABEL } from "@/lib/display";
+import {
+  CLASSIFICATION_LABEL,
+  formatStartup,
+  formatTime,
+  latestReport,
+  LOCAL_LABEL,
+  OUTCOME_LABEL,
+  TRIGGER_LABEL,
+} from "@/lib/display";
 import type { ErrorCount, StudentRow } from "@/lib/types";
 
 type Pending = { kind: "restart" | "reset-pin" | "remove"; student: StudentRow };
@@ -102,6 +110,71 @@ function ConnectionCell({ student }: { student: StudentRow }) {
   );
 }
 
+function TextList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <VStack gap={0.5}>
+      <Text type="supporting" weight="semibold">
+        {title}
+      </Text>
+      {items.map((item, i) => (
+        <Text key={i}>{`· ${item}`}</Text>
+      ))}
+    </VStack>
+  );
+}
+
+// 모델과 학생 PC에서 온 글이 많아 전부 텍스트 노드로만 그린다.
+function StudentDetail({ student }: { student: StudentRow }) {
+  const actions = student.recentActions.slice(0, 5);
+  const seen = formatTime(student.lastSeenAt);
+  const local = student.local;
+  const pc = [local.os, local.arch, local.python].filter(Boolean).join(" / ");
+  const localLabel = LOCAL_LABEL[local.status];
+  return (
+    <VStack gap={4} paddingBlock={3} paddingInline={4}>
+      <HStack gap={4} wrap="wrap">
+        <Text type="supporting">{seen ? `마지막 확인 ${seen}` : "마지막 확인 없음"}</Text>
+        {student.startupMillis != null && <Text type="supporting">{formatStartup(student.startupMillis)}</Text>}
+      </HStack>
+
+      <VStack gap={1}>
+        <Text weight="semibold">에이전트 조치 (최근 {actions.length}건)</Text>
+        {actions.length === 0 && <Text color="secondary">조치 내역 없음</Text>}
+        {actions.map((a, i) => {
+          const head = [
+            formatTime(a.at),
+            TRIGGER_LABEL[a.trigger] ?? a.trigger,
+            a.classification ? (CLASSIFICATION_LABEL[a.classification] ?? a.classification) : null,
+            a.outcome ? (OUTCOME_LABEL[a.outcome] ?? a.outcome) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <VStack key={`${a.at}-${i}`} gap={0.5}>
+              <Text type="supporting">{head}</Text>
+              {a.tools.length > 0 && <Text type="code">{`도구: ${a.tools.join(" → ")}`}</Text>}
+              {a.summary && <Text>{a.summary}</Text>}
+            </VStack>
+          );
+        })}
+      </VStack>
+
+      <TextList title="환경 불일치" items={student.issues} />
+      <TextList title="추가 패키지 경고" items={student.extras} />
+
+      {(localLabel || pc || local.failed.length > 0) && (
+        <VStack gap={1}>
+          <Text weight="semibold">내 PC</Text>
+          {localLabel && <Text>{localLabel}</Text>}
+          {pc && <Text type="code">{pc}</Text>}
+          <TextList title="실패한 항목" items={local.failed} />
+        </VStack>
+      )}
+    </VStack>
+  );
+}
+
 export function StudentsTab() {
   const { courseId, dashboard, refresh } = useCourse();
   const showToast = useToast();
@@ -109,6 +182,7 @@ export function StudentsTab() {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [acting, setActing] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const helpCount = dashboard.students.filter((s) => s.needsHelp).length;
   const rows = useMemo(() => {
@@ -117,6 +191,20 @@ export function StudentsTab() {
       (s) => (filter === "all" || s.needsHelp) && (!q || s.name.includes(q)),
     );
   }, [dashboard.students, filter, query]);
+
+  // 펼침 상태는 여기서 들고 있어 3초마다 새로 받아도 닫히지 않는다.
+  const expansion = useTableRowExpansion<StudentRow>({
+    expandedKeys: expanded,
+    onToggle: (key) =>
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    getRowKey: (s) => String(s.sessionId),
+    getRowLabel: (s) => s.name,
+    renderExpanded: (s) => <StudentDetail student={s} />,
+  });
 
   const isOpen = dashboard.course.status === "READY";
 
@@ -275,6 +363,7 @@ export function StudentsTab() {
           idKey="sessionId"
           data={rows}
           columns={columns}
+          plugins={{ expansion }}
           emptyState={
             <VStack paddingBlock={6} paddingInline={4} hAlign="center">
               <Text color="secondary">

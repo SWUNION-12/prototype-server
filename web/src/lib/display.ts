@@ -31,6 +31,18 @@ export const LOCAL_LABEL: Record<string, string> = {
   FAIL: "내 PC 설치 실패",
 };
 
+export const TRIGGER_LABEL: Record<string, string> = {
+  CHECK: "점검",
+  HELP: "도움 요청",
+};
+
+export const OUTCOME_LABEL: Record<string, string> = {
+  RESOLVED: "해결",
+  EXPLAINED: "설명",
+  ESCALATED: "강사 전달",
+  NO_ACTION: "조치 없음",
+};
+
 export function studentCountLabel(count: number): string {
   return `학생 ${count}명`;
 }
@@ -49,6 +61,11 @@ export function formatElapsed(totalSeconds: number): string {
   if (hours > 0) return `${hours}시간 ${minutes}분`;
   if (minutes > 0) return `${minutes}분 ${seconds}초`;
   return `${seconds}초`;
+}
+
+/** 기동 시간. 1초 미만은 ms, 그 이상은 초로 보인다. */
+export function formatStartup(ms: number): string {
+  return ms < 1000 ? `기동 ${ms} ms` : `기동 ${(ms / 1000).toFixed(1)}초`;
 }
 
 /** AI 조치 보고 칸. 강사가 봐야 할 이유가 있으면 그것을, 없으면 최근 조치를 보여 준다. */
