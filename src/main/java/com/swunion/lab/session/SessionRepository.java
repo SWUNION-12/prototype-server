@@ -25,6 +25,16 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	/** 수업 목록·단건 응답의 학생 수. */
 	long countByCourse_Id(long courseId);
 
+	/** 수업별 학생 수(수업 목록용). 학생이 없는 수업은 행이 없다. */
+	@Query("select s.course.id as courseId, count(s) as total from StudentSession s group by s.course.id")
+	List<CourseCount> countGroupedByCourse();
+
+	interface CourseCount {
+		long getCourseId();
+
+		long getTotal();
+	}
+
 	/** 수업 종료가 멈출 컨테이너를 찾는다. */
 	List<StudentSession> findByCourse_IdAndContainerIdIsNotNull(long courseId);
 

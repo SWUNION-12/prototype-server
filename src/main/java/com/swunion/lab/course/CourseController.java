@@ -2,6 +2,7 @@ package com.swunion.lab.course;
 
 import com.swunion.lab.session.SessionRepository;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,10 @@ public class CourseController {
 
 	@GetMapping
 	List<Map<String, Object>> list() {
-		return service.list().stream().map(c -> view(c, sessions.countByCourse_Id(c.getId()))).toList();
+		// 수업마다 세지 않고 한 번의 group by로 센다. 학생이 없는 수업은 맵에 없으므로 0이다.
+		Map<Long, Long> counts = new HashMap<>();
+		sessions.countGroupedByCourse().forEach(r -> counts.put(r.getCourseId(), r.getTotal()));
+		return service.list().stream().map(c -> view(c, counts.getOrDefault(c.getId(), 0L))).toList();
 	}
 
 	@GetMapping("/{id}")

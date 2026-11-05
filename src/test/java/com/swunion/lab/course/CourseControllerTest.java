@@ -27,11 +27,11 @@ class CourseControllerTest {
 
 	@Autowired
 	MockMvc mvc;
-	// 컨트롤러 테스트에서는 백그라운드 발급이 실제로 돌지 않게 막는다.
 	@Autowired
 	CourseRepository courses;
 	@Autowired
 	SessionRepository sessions;
+	// 컨트롤러 테스트에서는 백그라운드 발급이 실제로 돌지 않게 막는다.
 	@MockitoBean
 	CourseProvisioner provisioner;
 
