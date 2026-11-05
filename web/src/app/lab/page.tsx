@@ -32,7 +32,7 @@ function Lost() {
     <Center className="app-root" padding={4}>
       <EmptyState
         title="입장 정보를 찾을 수 없습니다."
-        description="다른 곳에서 다시 입장했거나 주소가 잘못되었어요. 입장 코드, 이름, PIN으로 다시 입장해 주세요."
+        description="다른 곳에서 다시 입장했거나 주소가 잘못되었어요. 수업 코드, 이름, PIN으로 다시 입장해 주세요."
         actions={<Button variant="primary" label="입장 페이지로" href="/join" />}
       />
     </Center>

@@ -47,7 +47,7 @@ function CourseInfo() {
               </HStack>
             )}
           </MetadataListItem>
-          <MetadataListItem label="입장 코드">
+          <MetadataListItem label="수업 코드">
             {course.entryCode ? (
               <Text type="code">{course.entryCode}</Text>
             ) : (

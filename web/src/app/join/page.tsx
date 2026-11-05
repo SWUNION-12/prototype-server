@@ -71,11 +71,11 @@ function JoinForm() {
         autoComplete="name"
       />
       <TextInput
-        label="초대 코드"
+        label="수업 코드"
         size="lg"
         value={code}
         onChange={(v) => setCode(v.toUpperCase())}
-        placeholder="초대 코드를 입력해주세요"
+        placeholder="수업 코드를 입력해주세요"
         autoComplete="off"
         autoCapitalize="characters"
       />

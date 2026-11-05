@@ -36,14 +36,14 @@ function EntryInfo({ entryCode }: { entryCode: string }) {
 
   return (
     <HStack gap={2} vAlign="center" wrap="wrap">
-      <Text type="supporting">초대 코드</Text>
+      <Text type="supporting">수업 코드</Text>
       <Text type="code" size="lg" weight="semibold">
         {entryCode}
       </Text>
       <Button
         size="sm"
         label="코드 복사"
-        onClick={() => copy(entryCode, "초대 코드를 복사했습니다.")}
+        onClick={() => copy(entryCode, "수업 코드를 복사했습니다.")}
       />
       <Button
         size="sm"

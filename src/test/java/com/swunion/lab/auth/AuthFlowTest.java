@@ -157,7 +157,7 @@ class AuthFlowTest {
 		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
 						.content("{\"entryCode\":\"NOPE00\",\"name\":\"철수\",\"pin\":\"1234\"}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.error").value(Matchers.containsString("입장 코드")));
+				.andExpect(jsonPath("$.error").value(Matchers.containsString("수업 코드")));
 		mvc.perform(post("/api/s/no-such-token/help").contentType(MediaType.APPLICATION_JSON)
 						.content("{\"errorText\":\"x\"}"))
 				.andExpect(status().isNotFound());

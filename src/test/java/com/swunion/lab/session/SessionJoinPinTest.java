@@ -733,7 +733,7 @@ class SessionJoinPinTest {
 		JoinException newcomer = rejected("새학생", "1234");
 
 		assertThat(returning.status()).isEqualTo(400);
-		assertThat(returning.getMessage()).isEqualTo(newcomer.getMessage()).contains("입장 코드를 확인해 주세요");
+		assertThat(returning.getMessage()).isEqualTo(newcomer.getMessage()).contains("수업 코드를 확인해 주세요");
 		assertThat(sessions.count()).isEqualTo(1);
 		assertThat(row(id).getToken()).isEqualTo(first.session().getToken());
 		assertThat(ensurer.ensured).isEmpty();

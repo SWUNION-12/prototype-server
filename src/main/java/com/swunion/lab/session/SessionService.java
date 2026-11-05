@@ -44,7 +44,7 @@ public class SessionService {
 	private final ContainerSpecs specs;
 	private final ContainerEnsurer ensurer;
 	private final PinPolicy pins;
-	// 수업·이름 키마다 하나이고 지우지 않는다. 형식 검사를 통과하고 READY 수업의 입장 코드를 댄 이름만 만들며,
+	// 수업·이름 키마다 하나이고 지우지 않는다. 형식 검사를 통과하고 READY 수업의 수업 코드를 댄 이름만 만들며,
 	// 그런 새 이름은 어차피 세션 행과 컨테이너를 만들므로 이 맵이 먼저 문제가 되지는 않는다.
 	private final ConcurrentHashMap<String, ReentrantLock> nameLocks = new ConcurrentHashMap<>();
 	// 행은 넣었지만 아직 컨테이너를 기록하지 않은 세션 id. 이 서버의 메모리에만 있다(재시작하면 만들던 입장도 없다).
@@ -72,7 +72,7 @@ public class SessionService {
 	}
 
 	/**
-	 * 입장 코드 + 이름 + PIN. 그 수업에 같은 이름(앞뒤 공백·대소문자 무시)이 없으면 새 세션을 만들고, 있으면 PIN을
+	 * 수업 코드 + 이름 + PIN. 그 수업에 같은 이름(앞뒤 공백·대소문자 무시)이 없으면 새 세션을 만들고, 있으면 PIN을
 	 * 확인해 원래 세션으로 돌려보낸다(토큰은 새로 발급, 컨테이너는 다시 돌게 한다).
 	 * 컨테이너 기동과 IDE 응답을 기다리는 동안 DB 트랜잭션도 이름 잠금도 쥐지 않도록 @Transactional을 쓰지 않는다.
 	 */
@@ -100,7 +100,7 @@ public class SessionService {
 		String code = entryCode == null ? "" : entryCode.trim().toUpperCase();
 		Course course = code.isEmpty() ? null : courses.findByEntryCode(code).orElse(null);
 		if (course == null || course.getStatus() != CourseStatus.READY) {
-			throw new JoinException("입장 코드를 확인해 주세요. 코드가 없거나 아직 준비되지 않은 수업입니다.");
+			throw new JoinException("수업 코드를 확인해 주세요. 코드가 없거나 아직 준비되지 않은 수업입니다.");
 		}
 		return course;
 	}

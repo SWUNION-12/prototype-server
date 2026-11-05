@@ -66,7 +66,7 @@ class IdeControllerTest {
 	static final String BUSY = "에이전트가 처리 중입니다. 잠시 후 다시 시도해 주세요";
 	static final Map<String, Object> UNAUTHORIZED = Map.of("error", "인증 정보가 없습니다");
 
-	// 테스트마다 새 인스턴스가 만들어지지만 DB는 클래스 안에서 나눠 쓰므로 수업 입장 코드가 겹치지 않게 센다.
+	// 테스트마다 새 인스턴스가 만들어지지만 DB는 클래스 안에서 나눠 쓰므로 수업 수업 코드가 겹치지 않게 센다.
 	static final AtomicInteger seq = new AtomicInteger();
 
 	final SecureRandom random = new SecureRandom();

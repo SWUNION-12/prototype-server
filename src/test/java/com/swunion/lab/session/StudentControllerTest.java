@@ -187,7 +187,7 @@ class StudentControllerTest {
 	void badCodeIs400AndUnknownTokenIs404() throws Exception {
 		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"entryCode\":\"NOPE00\",\"name\":\"철수\",\"pin\":\"1234\"}"))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("입장 코드")));
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("수업 코드")));
 		mvc.perform(get("/api/s/deadbeef")).andExpect(status().isNotFound());
 	}
 

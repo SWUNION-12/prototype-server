@@ -100,7 +100,7 @@ export function ProvisioningProgress({ courseId, status, packages }: Props) {
           {hasTorch
             ? "torch는 이미지 빌드에 6분 넘게 걸린 적이 있어요."
             : "패키지가 크면 몇 분 더 걸릴 수 있어요."}{" "}
-          끝나면 초대 코드가 나타납니다.
+          끝나면 수업 코드가 나타납니다.
         </Text>
       </VStack>
     </Card>
