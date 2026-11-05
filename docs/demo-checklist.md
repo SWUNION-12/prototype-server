@@ -174,9 +174,9 @@ curl -s -u instructor:instructor http://localhost:8080/api/courses/<수업ID>   
 
 # 학생 두 명 입장 (브라우저면 http://localhost:8080/join.html)
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/join \
-  -d '{"entryCode":"<입장코드>","name":"학생A"}'
+  -d '{"entryCode":"<입장코드>","name":"학생A","pin":"1234"}'
 curl -s -H 'Content-Type: application/json' -X POST http://localhost:8080/api/join \
-  -d '{"entryCode":"<입장코드>","name":"학생B"}'
+  -d '{"entryCode":"<입장코드>","name":"학생B","pin":"5678"}'
 
 # 화면
 #   학생: http://localhost:8080/student.html?t=<토큰>   (일반 창과 시크릿 창에 하나씩)
@@ -260,6 +260,7 @@ docker volume ls | grep swunion
 - 시연 수업: 파이썬 3.12, 패키지 `six`. 발급부터 READY까지 13초.
 - 브라우저: Playwright 1.58.2 라이브러리로 `chrome-headless-shell` 152를 띄웠다. 학생 쪽은 쿠키와 저장소가 분리된 브라우저 컨텍스트 두 개, 강사 쪽은 Basic 인증 컨텍스트 하나를 썼다. 사용자의 Chrome은 쓰지 않았다.
 - 실제 LLM 호출: 0회.
+- 아래 "시연 순서"의 curl 명령은 03:48~03:51에 일회용 서버로 한 번씩 보내 응답을 확인했다. 인메모리 DB, 임시 작업 폴더, 테스트 전용 이미지·컨테이너 접두사, 포트 18080, 점검 끔으로 띄워서 실제 DB와 기존 자원에는 닿지 않는다. 끝난 뒤 그 접두사의 컨테이너, 볼륨, 이미지가 남지 않았고 기존 수업 이미지 id도 그대로였다. 각 목표의 "빌드·실행"에 적은 응답 코드와 본문은 이 실행에서 본 값이다.
 - 기존 수업 1, 2, 3과 컨테이너 6개, 볼륨 6개, 수업 이미지 3개는 그대로다. 컨테이너 시작·종료 시각, 볼륨 생성 시각, 이미지 id를 실행 전후로 비교했다. 서버를 끈 뒤 DB 사본을 열어 보니 수업 1, 2, 3과 학생 행 6개가 남아 있고 수업 4, 5의 행은 없었다.
 
 ### 결과 요약
@@ -276,9 +277,9 @@ docker volume ls | grep swunion
 
 | 태스크 | 결과 | 시간 |
 | --- | --- | --- |
-| `./gradlew test --rerun` | 329개 통과, 실패 0 | 32초 |
-| `./gradlew integrationTest --rerun` | 20개 통과, 실패 0 (LifecycleIT 4, CheckIT 1, CourseProvisioningIT 1, UvLockerIT 2, DockerJavaGatewayIT 10, MacInstallIT 1, JoinIT 1) | 74초 |
-| 화면 jsdom 하네스 | 45개 통과. 저장소 밖(`.superpowers/sdd-lifecycle/t5-harness`)에 있다 | 수 초 |
+| `./gradlew test --rerun` | 329개 통과, 실패 0 | 두 태스크를 한 명령으로 돌려 합계 1분 48초 |
+| `./gradlew integrationTest --rerun` | 20개 통과, 실패 0 (LifecycleIT 4, CheckIT 1, CourseProvisioningIT 1, UvLockerIT 2, DockerJavaGatewayIT 10, MacInstallIT 1, JoinIT 1) | 위와 같음 |
+| 화면 jsdom 하네스 | 45개 통과. 저장소 밖(`.superpowers/sdd-lifecycle/t5-harness`)에 있다 | 재지 않음 |
 
 `LifecycleIT`는 테스트 전용 이미지·컨테이너 접두사와 인메모리 DB를 쓰고, 만든 컨테이너·볼륨·이미지를 모두 지운다. 실행 뒤 Docker 목록이 실행 전과 같았다.
 
@@ -289,7 +290,7 @@ docker volume ls | grep swunion
 - 자동 테스트: `SessionJoinPinTest` 32개(입장 표의 다섯 경우, 잠금과 해제, 토큰 교체, 동시 입장), `ContainerEnsurerTest` 24개, `JoinIT`. 실제 Docker에서는 `LifecycleIT`가 둘을 본다.
   - `rejoinRecreatesWithSameVolume`: 컨테이너를 강제로 지운 뒤 같은 이름(앞뒤 공백 포함)과 PIN으로 들어오면 200이다. 새 컨테이너에 같은 볼륨이 붙고, 전에 쓴 파일이 있고, 같은 IDE 비밀번호로 로그인된다. 예전 토큰은 404다.
   - `rejoinAfterVolumeRemovalRecreatesEmptyAndFlagsInstructor`: 볼륨까지 지우면 빈 볼륨으로 다시 만든다. 학생 API는 `workspaceLost: true`, 대시보드는 강사 도움 필요 "작업 공간 유실"을 준다.
-- 빌드·실행: 처음 입장은 201 `resumed:false`(0.96초), 다시 입장은 200 `resumed:true`(0.18초. 컨테이너가 돌고 있어 그대로 붙었다). 예전 토큰의 `GET /api/s/{token}`은 404.
+- 빌드·실행: 처음 입장은 201 `{token, resumed:false}`, 다시 입장은 200 `{token, resumed:true}`, 예전 토큰의 `GET /api/s/{token}`은 404였다. PIN 없이 보내면 400 "PIN은 숫자 4자리로 입력해 주세요."였다. 실제 서버의 브라우저 흐름에서는 처음 입장 응답이 0.96초, 다시 입장이 0.18초 걸렸다(컨테이너가 돌고 있어 그대로 붙었다).
 - 실제 흐름
   - 브라우저 컨텍스트 1에서 학생A가 코드, 이름, PIN으로 입장했다. 학생 화면 위쪽에 "다시 들어올 때는 입장 코드, 이름, PIN이 필요합니다."가 보였다. 화면에 나온 24자 비밀번호로 IDE에 로그인하자 VS Code 화면(code-server의 `project` 작업 공간)이 열리고 `code-server-session` 쿠키가 생겼다.
   - `docker exec -u coder`로 `/home/coder/project/keep.txt`를 썼다(소유자 coder).
@@ -302,25 +303,25 @@ docker volume ls | grep swunion
 #### 2. PIN 초기화 뒤 새 PIN으로 돌아온다
 
 - 자동 테스트: `SessionJoinPinTest.resetPinLetsNextJoinSetPin`, `legacyNoPinAdoptsPin`, `LifecycleServiceTest.resetPinClearsOnlyThatStudent`, `LifecycleControllerTest.studentEndpoints`.
-- 빌드·실행: `POST /api/courses/{id}/sessions/{sid}/reset-pin`이 204를 돌려줬다.
+- 빌드·실행: `POST /api/courses/{id}/sessions/{sid}/reset-pin`은 204였고, 이어서 새 PIN으로 입장하면 200 `resumed:true`였다.
 - 실제 흐름: 위에서 잠긴 학생A 행의 "PIN 초기화"를 대시보드에서 눌렀다. "학생A: PIN을 초기화했습니다. 학생이 같은 이름으로 다시 입장하면 새 PIN을 정합니다."가 뜨고 행에 "PIN 미설정"이 붙었다(대시보드 JSON `pinSet: false`). 잠금도 함께 풀렸다. 학생A가 새 PIN으로 입장하자 200 `resumed:true`였고 컨테이너, IDE 비밀번호, `keep.txt`가 그대로였다. 그 뒤 예전 PIN은 403, 새 PIN은 200이었다.
 
 #### 3. 끝난 수업을 재개하면 원래 코드 그대로 이어 간다
 
 - 자동 테스트: `LifecycleIT.resumeKeepsFiles`(실제 Docker. 종료 뒤 재개 응답 `{started:1, unhealthy:0, recreatedEmpty:0, failed:0}`, 같은 컨테이너, 파일 그대로, 저장된 포트로 IDE 200, 재개 뒤 재입장 200), `LifecycleServiceTest`의 재개 테스트(READY로 바꾸기 전에 컨테이너를 켠다, 결과 집계, 60초 상한, 같은 수업 작업 409).
-- 빌드·실행: `POST /api/courses/{id}/resume` 200, 0.83초.
+- 빌드·실행: `POST /end`는 200 `{"status":"ENDED","stopped":1,"failed":0}`, `POST /resume`은 200 `{"started":1,"unhealthy":0,"recreatedEmpty":0,"failed":0}`(0.78초)였고 수업은 READY가 됐다. 실제 서버에서는 대시보드 "수업 재개"를 누르고 결과 문구가 뜰 때까지 0.83초 걸렸다.
 - 실제 흐름: 대시보드 "수업 종료"를 두 번 눌렀다. "수업을 종료했습니다. 멈춘 컨테이너 1개, 멈추지 못한 컨테이너 0개."가 뜨고 상태가 ENDED, A 컨테이너가 exited가 됐고 "수업 재개" 버튼이 켜졌다. 재개를 누르자 "수업을 재개했습니다. 켜진 학생 1명, IDE 응답 없음 0명, 빈 작업 공간으로 새로 만든 학생 0명, 켜지 못한 학생 0명."이 떴다. 대시보드 상태가 READY로 바뀌고 재개 버튼은 꺼지고 종료 버튼이 켜졌다. `keep.txt` 내용이 같았다. 학생 토큰은 그대로 쓸 수 있었고 학생 API의 IDE 포트가 Docker 포트와 같았다. 같은 비밀번호로 IDE에 로그인하자 탐색기에 `keep.txt`가 보였다.
 
 #### 4. 끝난 수업을 지우면 아무것도 남지 않는다
 
 - 자동 테스트: `LifecycleIT.deleteCourseLeavesNothing`(실제 Docker. READY면 409, 이름 끝에 공백이 붙으면 400, 정확한 이름이면 200 `{removedContainers:3, removedVolumes:3, failures:[]}`. 기록된 컨테이너·볼륨, 수업 이미지, 작업 폴더, DB 행이 모두 없고, 테스트 접두사로 찾아도 남은 컨테이너·볼륨이 없다), `LifecycleServiceTest`의 삭제 테스트(기록된 이름만 지운다, 이미 없는 자원은 성공, 다른 실패는 목록으로 돌려준다, 수업 밖을 가리키는 폴더 링크를 거절한다).
-- 빌드·실행: 틀린 이름은 400 "수업 이름이 정확히 일치하지 않습니다.", 본문 없는 요청도 400, 정확한 이름은 200(0.23초).
+- 빌드·실행: 이름 끝에 공백을 붙이면 400 `{"error":"수업 이름이 정확히 일치하지 않습니다."}`, 정확한 이름이면 200 `{"removedContainers":1,"removedVolumes":1,"failures":[]}`(0.18초), 그 뒤 수업 조회는 404였다. 실제 서버에서도 틀린 이름과 본문 없는 요청이 400이었다.
 - 실제 흐름: 재개한 수업을 다시 종료했다. 삭제 입력칸이 비었거나 "T6 수명 관리", "T6 수명 관리 시연 "(끝 공백), "t6 수명 관리 시연"이면 "수업 삭제" 버튼이 꺼져 있었다. 정확한 이름을 넣자 켜졌고, 누르자 "수업을 삭제했습니다. 컨테이너 1개, 볼륨 1개를 지웠습니다."가 떴다. 3초 뒤 `instructor.html`로 넘어갔고 목록에는 수업 1, 2, 3만 있었다. Docker에서 학생A의 컨테이너와 볼륨, 수업 이미지 `swunion/course-5:1`이 없어졌고, 이 수업 라벨이 붙은 컨테이너도 없었다. `data/courses/5`도 없다. 수업 조회와 학생 토큰은 404였다.
 
 #### 5. 학생 한 명 재시작과 삭제
 
 - 자동 테스트: `LifecycleServiceTest`의 재시작·학생 삭제 테스트, `ContainerEnsurerTest.restartRestartsEvenWhenContainerIsRunning`, `LifecycleControllerTest.studentEndpoints`.
-- 빌드·실행: 재시작 200 `{"ok":true}`(1.0초), 학생 삭제 200 `{"removedContainers":1,"removedVolumes":1,"failures":[]}`.
+- 빌드·실행: 재시작은 200 `{"ok":true}`(0.97초), 학생 삭제는 200 `{"removedContainers":1,"removedVolumes":1,"failures":[]}`였다. 실제 서버에서도 같은 학생 삭제 API를 curl과 스크립트로 두 번 불러 같은 본문을 받았다.
 - 실제 흐름
   - 학생A 행의 "재시작"을 눌렀다. "학생A: 재시작했습니다. IDE가 응답합니다."가 떴다. 같은 컨테이너의 시작 시각이 바뀌었고 IDE 포트가 53699에서 53777로 바뀌었다. 학생 API의 `ideUrl`도 새 포트였고 그 포트의 `/healthz`는 200이었다.
   - 학생B가 입장한 뒤 B 행의 "삭제"를 한 번 눌렀다. 버튼이 "정말 삭제합니까? 한 번 더 누르세요"로 바뀌었고 컨테이너는 그대로 있었다. 다시 누르자 "학생B: 삭제했습니다. 컨테이너 1개, 볼륨 1개를 지웠습니다."가 떴다. B의 컨테이너와 볼륨이 Docker에서 없어졌다. 학생A의 컨테이너는 시작 시각까지 그대로였고 볼륨도 남았다. 대시보드에는 학생A 한 명만 남았다.
@@ -331,7 +332,7 @@ docker volume ls | grep swunion
 
 ### 시연 순서
 
-위 "시연 순서"의 입장 명령에는 PIN이 없다. 지금 서버는 PIN이 없거나 숫자 4자리가 아니면 400("PIN은 숫자 4자리로 입력해 주세요.")을 돌려주므로 `"pin"`을 더해 보낸다.
+입장에는 PIN이 필요하다. PIN이 없거나 숫자 4자리가 아니면 서버가 400("PIN은 숫자 4자리로 입력해 주세요.")을 돌려준다. 위 "시연 순서"의 입장 명령에도 `"pin"`을 넣어 두었다.
 
 ```sh
 # 학생 입장. 처음이면 201 resumed:false
