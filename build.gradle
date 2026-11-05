@@ -82,6 +82,17 @@ def webDir = layout.projectDirectory.dir('web')
 tasks.register('webInstall', Exec) {
 	description = 'web/의 의존성을 잠금 파일 그대로 설치한다'
 	group = 'build'
+	// pnpm이 없으면 Exec은 "프로세스를 시작하지 못했다"만 내서 원인을 알기 어렵다. 실행하지 않고 PATH에서 찾는다.
+	// (pnpm --version은 web/의 packageManager 버전을 내려받으려 할 수 있어 쓰지 않는다.)
+	doFirst {
+		def names = ['pnpm', 'pnpm.cmd', 'pnpm.exe']
+		def found = (System.getenv('PATH') ?: '').split(File.pathSeparator).any { dir ->
+			dir && names.any { new File(dir, it).canExecute() }
+		}
+		if (!found) {
+			throw new GradleException('pnpm이 필요합니다 (Node 20.9 이상, pnpm은 package.json의 packageManager 버전으로 자동 전환)')
+		}
+	}
 	workingDir webDir
 	commandLine 'pnpm', 'install', '--frozen-lockfile'
 	inputs.files(webDir.file('package.json'), webDir.file('pnpm-lock.yaml'), webDir.file('pnpm-workspace.yaml'))
@@ -98,7 +109,9 @@ tasks.register('webBuild', Exec) {
 	// public/은 없을 수 있어 files로 받는다(dir 입력은 폴더가 없으면 실패한다).
 	inputs.files(webDir.dir('public'))
 	inputs.files(webDir.file('package.json'), webDir.file('pnpm-lock.yaml'), webDir.file('next.config.ts'),
-			webDir.file('tsconfig.json'))
+			webDir.file('tsconfig.json'), webDir.file('pnpm-workspace.yaml'))
+	// NEXT_PUBLIC_* 값은 빌드 때 out에 박힌다. .env* 파일이 없어도 되는 fileTree로 받는다.
+	inputs.files(fileTree(dir: webDir.asFile, include: '.env*'))
 	outputs.dir webDir.dir('out')
 }
 
