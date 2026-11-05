@@ -1,4 +1,4 @@
-// 서버 응답 타입. API_CONTRACT.md와 같이 고친다.
+// 서버 응답 타입. 서버의 Java 뷰(StudentStatusView, DashboardView, CourseController의 응답)와 같이 고친다.
 
 export type CourseStatus = "LOCKING" | "BUILDING" | "READY" | "FAILED" | "ENDED";
 export type EnvStatus = "UNKNOWN" | "OK" | "MISMATCH" | "REPAIRING";
