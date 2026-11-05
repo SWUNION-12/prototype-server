@@ -30,7 +30,7 @@ const CONFIRM: Record<Pending["kind"], { title: string; description: (n: string)
   },
   "reset-pin": {
     title: "PIN을 초기화할까요?",
-    description: (n) => `${n} 학생의 PIN이 새 값으로 바뀝니다. 학생은 새 PIN으로 다시 입장해야 합니다.`,
+    description: () => "PIN을 지웁니다. 학생이 다음 입장 때 새 PIN을 정합니다.",
     action: "초기화",
   },
   remove: {
@@ -63,20 +63,8 @@ function RepeatedErrors({ errors, note }: { errors: ErrorCount[]; note: string }
   );
 }
 
-function PinSpoiler({ student }: { student: StudentRow }) {
-  const [shown, setShown] = useState(false);
-  if (!student.pin) return <Text type="supporting">없음</Text>;
-  return (
-    <button
-      type="button"
-      className="pin"
-      aria-pressed={shown}
-      aria-label={`${student.name} PIN ${shown ? "숨기기" : "보기"}`}
-      onClick={() => setShown(!shown)}
-    >
-      {student.pin}
-    </button>
-  );
+function PinCell({ student }: { student: StudentRow }) {
+  return <Text color={student.pinSet ? "primary" : "secondary"}>{student.pinSet ? "설정됨" : "미설정"}</Text>;
 }
 
 function EnvCell({ student }: { student: StudentRow }) {
@@ -158,9 +146,9 @@ export function StudentsTab() {
     },
     {
       key: "pin",
-      header: "PIN(클릭해서 확인)",
-      width: pixel(170),
-      renderCell: (student) => <PinSpoiler student={student} />,
+      header: "PIN",
+      width: pixel(100),
+      renderCell: (student) => <PinCell student={student} />,
     },
     {
       key: "report",
@@ -230,14 +218,25 @@ export function StudentsTab() {
     setActing(true);
     try {
       if (kind === "restart") {
-        await courses.restart(courseId, student.sessionId);
-        showToast({ body: `${student.name} 학생의 컨테이너를 재시작했습니다.` });
+        const { ok } = await courses.restart(courseId, student.sessionId);
+        showToast(
+          ok
+            ? { body: `${student.name} 학생의 컨테이너를 재시작했습니다.` }
+            : { body: `${student.name} 학생의 컨테이너를 재시작하지 못했습니다.`, type: "error" },
+        );
       } else if (kind === "reset-pin") {
-        const { pin } = await courses.resetPin(courseId, student.sessionId);
-        showToast({ body: `${student.name} 학생의 새 PIN: ${pin}` });
+        await courses.resetPin(courseId, student.sessionId);
+        showToast({ body: `${student.name} 학생의 PIN을 지웠습니다. 다음 입장 때 새 PIN을 정합니다.` });
       } else {
-        await courses.remove(courseId, student.sessionId);
-        showToast({ body: `${student.name} 학생을 제거했습니다.` });
+        const { failures } = await courses.remove(courseId, student.sessionId);
+        showToast(
+          failures.length > 0
+            ? {
+                body: `${student.name} 학생을 제거했지만 지우지 못한 자원이 ${failures.length}개 있습니다: ${failures.join(", ")}`,
+                type: "error",
+              }
+            : { body: `${student.name} 학생을 제거했습니다.` },
+        );
       }
       setPending(null);
       await refresh();

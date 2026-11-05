@@ -35,7 +35,7 @@ function CourseCard({ course }: { course: Course }) {
           <Text type="large" weight="semibold">
             {course.name}
           </Text>
-          <Text type="supporting">{studentCountLabel(course.studentCount, course.capacity)}</Text>
+          <Text type="supporting">{studentCountLabel(course.studentCount)}</Text>
         </HStack>
         <MetadataList label={{ position: "start", width: 96 }}>
           <MetadataListItem label="Python">
@@ -57,7 +57,7 @@ function CourseCard({ course }: { course: Course }) {
 }
 
 export default function AdminHomePage() {
-  const { data: list, error } = usePoll(courses.list, 3000);
+  const { data: list, error } = usePoll(courses.list, 3000, (e) => e instanceof ApiError && e.status === 401);
 
   return (
     <VStack className="app-root">
@@ -72,6 +72,10 @@ export default function AdminHomePage() {
             icon={<Icon icon={PlusIcon} size="sm" />}
           />
         </HStack>
+
+        {error instanceof ApiError && error.status === 401 && list ? (
+          <Banner status="error" title={error.message} />
+        ) : null}
 
         {error != null && !list ? (
           <Banner

@@ -13,7 +13,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { PlusIcon } from "@/components/icons";
 import { ApiError, courses } from "@/lib/api";
@@ -22,18 +22,11 @@ import {
   isValidPackage,
   MAX_PACKAGES,
   packageName,
-  PYTHON_GROUPS,
+  PYTHON_VERSIONS,
   SUGGESTED_PACKAGES,
 } from "@/lib/packages";
 
 function PythonStep({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const selectedRow = useRef<HTMLLabelElement>(null);
-
-  // 기본 선택이 목록 중간에 있어 처음 열 때 보이도록 스크롤한다.
-  useEffect(() => {
-    selectedRow.current?.scrollIntoView({ block: "center" });
-  }, []);
-
   return (
     <Card padding={0}>
       <HStack hAlign="between" vAlign="center" gap={3} paddingBlock={4} paddingInline={6}>
@@ -44,28 +37,18 @@ function PythonStep({ value, onChange }: { value: string; onChange: (v: string) 
           선택: <Text type="code">{value}</Text>
         </Text>
       </HStack>
-      <div className="version-scroll" role="radiogroup" aria-labelledby="py-label">
-        {PYTHON_GROUPS.map((group) => (
-          <div key={group.minor} role="group" aria-label={`Python ${group.minor}`}>
-            <div className="version-group-title">Python {group.minor}</div>
-            {group.versions.map((version) => (
-              <label
-                key={version}
-                ref={version === value ? selectedRow : undefined}
-                className="version-row"
-                data-selected={version === value}
-              >
-                <input
-                  type="radio"
-                  name="python"
-                  value={version}
-                  checked={version === value}
-                  onChange={() => onChange(version)}
-                />
-                {version}
-              </label>
-            ))}
-          </div>
+      <div className="version-list" role="radiogroup" aria-labelledby="py-label">
+        {PYTHON_VERSIONS.map((version) => (
+          <label key={version} className="version-row" data-selected={version === value}>
+            <input
+              type="radio"
+              name="python"
+              value={version}
+              checked={version === value}
+              onChange={() => onChange(version)}
+            />
+            {version}
+          </label>
         ))}
       </div>
     </Card>

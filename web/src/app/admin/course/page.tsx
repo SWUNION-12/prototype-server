@@ -69,7 +69,7 @@ function StatusBanner({ dashboard }: { dashboard: Dashboard }) {
   }
   if (status === "FAILED") {
     return (
-      <Banner status="error" title="환경을 만들지 못했습니다" description="패키지나 버전을 바꿔 새 프로젝트를 만들어 주세요.">
+      <Banner status="error" title="환경을 만들지 못했습니다" description="패키지나 버전을 바꿔 새 프로젝트를 만들어 주세요. 이 수업은 설정 탭에서 삭제할 수 있습니다.">
         {errorSummary && <pre className="error-summary">{errorSummary}</pre>}
       </Banner>
     );
@@ -79,11 +79,24 @@ function StatusBanner({ dashboard }: { dashboard: Dashboard }) {
       <Banner
         status="info"
         title="종료된 수업입니다"
-        description="학생 컨테이너를 멈췄습니다. 학생 코드는 남아 있습니다."
+        description="학생 컨테이너를 멈췄습니다. 학생 코드는 남아 있고, 설정 탭에서 수업을 다시 열 수 있습니다."
       />
     );
   }
   return null;
+}
+
+function NotFound() {
+  return (
+    <VStack gap={4} hAlign="start">
+      <Banner
+        status="error"
+        title="수업을 찾을 수 없습니다."
+        description="삭제됐거나 주소가 올바르지 않습니다. 목록에서 수업을 골라 다시 열어 주세요."
+      />
+      <Button label="수업 목록으로" href="/admin" />
+    </VStack>
+  );
 }
 
 // 정적 빌드에서는 경로 값을 쓸 수 없어 수업 번호와 탭을 쿼리(?id=1&tab=settings)로 받는다.
@@ -92,7 +105,7 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
   const { data, error, refresh } = usePoll(
     fetcher,
     3000,
-    (e) => e instanceof ApiError && e.status === 404,
+    (e) => e instanceof ApiError && (e.status === 404 || e.status === 401),
   );
 
   const base = `/admin/course?id=${courseId}`;
@@ -117,7 +130,7 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
                 <Heading level={1}>{data.course.name}</Heading>
                 <Text type="supporting">
                   Python {data.course.pythonVersion} ·{" "}
-                  {studentCountLabel(data.students.length, data.course.capacity)}
+                  {studentCountLabel(data.students.length)}
                 </Text>
               </VStack>
               {data.course.entryCode && data.course.status === "READY" && (
@@ -129,6 +142,9 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
 
         {data ? (
           <>
+            {error instanceof ApiError && error.status === 401 && (
+              <Banner status="error" title={error.message} />
+            )}
             <StatusBanner dashboard={data} />
             <TabList value={tab} onChange={() => {}} hasDivider>
               <Tab value="students" label="학생 목록" href={base} />
@@ -137,16 +153,14 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
             <CourseProvider value={{ courseId, dashboard: data, refresh }}>{tab === "settings" ? <SettingsTab /> : <StudentsTab />}</CourseProvider>
           </>
         ) : error != null ? (
-          <Banner
-            status="error"
-            title={
-              error instanceof ApiError && error.status === 404
-                ? "프로젝트를 찾을 수 없습니다."
-                : error instanceof ApiError
-                  ? error.message
-                  : "프로젝트를 불러오지 못했습니다."
-            }
-          />
+          error instanceof ApiError && error.status === 404 ? (
+            <NotFound />
+          ) : (
+            <Banner
+              status="error"
+              title={error instanceof ApiError ? error.message : "수업을 불러오지 못했습니다."}
+            />
+          )
         ) : (
           <Spinner label="불러오는 중" />
         )}
@@ -164,14 +178,7 @@ function CourseEntry() {
       <VStack className="app-root">
         <AppHeader />
         <VStack as="main" className="page page--detail" gap={6}>
-          <Banner
-            status="error"
-            title="수업 주소가 올바르지 않습니다."
-            description="강사 홈에서 수업을 골라 다시 열어 주세요."
-          />
-          <HStack>
-            <Button label="강사 홈으로" href="/admin" />
-          </HStack>
+          <NotFound />
         </VStack>
       </VStack>
     );

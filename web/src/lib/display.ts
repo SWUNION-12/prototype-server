@@ -50,8 +50,8 @@ export function describeIssue(i: EnvIssue): string {
   }
 }
 
-export function studentCountLabel(count: number, capacity: number | null | undefined): string {
-  return capacity == null ? `학생 ${count}명` : `학생 ${count}/${capacity}명`;
+export function studentCountLabel(count: number): string {
+  return `학생 ${count}명`;
 }
 
 export function formatTime(iso: string | null | undefined): string {

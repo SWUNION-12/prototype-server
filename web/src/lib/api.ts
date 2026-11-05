@@ -1,9 +1,11 @@
 import type {
   Course,
   Dashboard,
+  DeleteResult,
   InstallInfo,
   Me,
   Os,
+  ResumeResult,
   VerifyResult,
 } from "./types";
 
@@ -71,18 +73,20 @@ export const courses = {
   create: (input: { name: string; pythonVersion: string; packages: string }) =>
     instructor<Course>("POST", "/api/courses", input),
   dashboard: (id: number) => instructor<Dashboard>("GET", `/api/courses/${id}/dashboard`),
-  update: (id: number, patch: { name?: string; capacity?: number | null }) =>
-    instructor<Course>("PATCH", `/api/courses/${id}`, patch),
   end: (id: number) =>
     instructor<{ status: string; stopped: number; failed: number }>("POST", `/api/courses/${id}/end`),
+  resume: (id: number) => instructor<ResumeResult>("POST", `/api/courses/${id}/resume`),
+  // 서버는 본문의 수업 이름이 실제 이름과 같아야 지운다.
+  deleteCourse: (id: number, confirmName: string) =>
+    instructor<DeleteResult>("DELETE", `/api/courses/${id}`, { confirmName }),
   resolve: (id: number, sessionId: number) =>
     instructor<void>("POST", `/api/courses/${id}/sessions/${sessionId}/resolve`),
   restart: (id: number, sessionId: number) =>
-    instructor<void>("POST", `/api/courses/${id}/sessions/${sessionId}/restart`),
+    instructor<{ ok: boolean }>("POST", `/api/courses/${id}/sessions/${sessionId}/restart`),
   resetPin: (id: number, sessionId: number) =>
-    instructor<{ pin: string }>("POST", `/api/courses/${id}/sessions/${sessionId}/reset-pin`),
+    instructor<void>("POST", `/api/courses/${id}/sessions/${sessionId}/reset-pin`),
   remove: (id: number, sessionId: number) =>
-    instructor<void>("DELETE", `/api/courses/${id}/sessions/${sessionId}`),
+    instructor<DeleteResult>("DELETE", `/api/courses/${id}/sessions/${sessionId}`),
 };
 
 // ---- 학생 ----

@@ -18,18 +18,8 @@ export function packageName(line: string): string {
     .replace(/[-_.]+/g, "-");
 }
 
-// uv 0.11.32가 설치할 수 있다고 알려 준 CPython 버전. 서버에 조회 API가 없어 시안 값을 그대로 쓴다.
-const PATCHES: Record<string, number[]> = {
-  "3.14": [6, 5, 4, 3, 2, 1, 0],
-  "3.13": [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
-  "3.12": [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
-  "3.11": [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 1],
-  "3.10": [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 9, 8, 7, 6, 5, 4, 3, 2, 0],
-};
+// 서버 규칙(^3\.[0-9]{1,2}(\.[0-9]{1,2})?$)에 맞는 값 중 실제로 확인한 3.8~3.14만 보인다.
+// 패치 번호는 uv가 그 계열의 최신판으로 고르므로 고르지 않는다.
+export const PYTHON_VERSIONS = ["3.14", "3.13", "3.12", "3.11", "3.10", "3.9", "3.8"];
 
-export const PYTHON_GROUPS = Object.entries(PATCHES).map(([minor, patches]) => ({
-  minor,
-  versions: patches.map((p) => `${minor}.${p}`),
-}));
-
-export const DEFAULT_PYTHON = "3.12.13";
+export const DEFAULT_PYTHON = "3.12";

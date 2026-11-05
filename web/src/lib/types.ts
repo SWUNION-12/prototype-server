@@ -17,7 +17,6 @@ export type Course = {
   entryCode: string | null;
   createdAt: string | null;
   studentCount: number;
-  capacity: number | null;
 };
 
 export type LocalView = {
@@ -51,7 +50,8 @@ export type StudentRow = {
   needsHelpReason: string | null;
   recentActions: ActionView[];
   startupMillis: number | null;
-  pin: string | null;
+  // PIN 값은 서버가 주지 않는다. 설정 여부만 안다.
+  pinSet: boolean;
 };
 
 export type ErrorCount = { errorType: string; count: number; students: string[] };
@@ -59,11 +59,24 @@ export type ErrorCount = { errorType: string; count: number; students: string[] 
 export type Dashboard = {
   course: Pick<
     Course,
-    "id" | "name" | "pythonVersion" | "packages" | "status" | "entryCode" | "errorSummary" | "capacity"
+    "id" | "name" | "pythonVersion" | "packages" | "status" | "entryCode" | "errorSummary"
   >;
   students: StudentRow[];
   repeatedErrors: ErrorCount[];
   repeatedErrorsNote: string;
+};
+
+export type ResumeResult = {
+  started: number;
+  unhealthy: number;
+  recreatedEmpty: number;
+  failed: number;
+};
+
+export type DeleteResult = {
+  removedContainers: number;
+  removedVolumes: number;
+  failures: string[];
 };
 
 export type LatestHelp = {

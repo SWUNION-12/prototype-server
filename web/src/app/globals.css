@@ -100,23 +100,8 @@ body {
 }
 
 /* Python 버전 목록 */
-.version-scroll {
-  height: 420px;
-  overflow-y: auto;
-}
-.version-group-title {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  height: 32px;
-  padding-inline: var(--spacing-6);
-  display: flex;
-  align-items: center;
-  background: color-mix(in srgb, var(--color-background-muted) 40%, var(--color-background-card));
-  border-block-end: 1px solid var(--color-border);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text-secondary);
+.version-list {
+  border-block-start: 1px solid var(--color-border);
 }
 .version-row {
   height: 40px;
@@ -184,27 +169,6 @@ body {
 }
 .astryx-table-row:has([data-needs-help]) {
   background: color-mix(in srgb, var(--color-error-muted) 18%, var(--color-background-card));
-}
-
-/* 디스코드 스포일러처럼 눌러야 보이는 PIN */
-.pin {
-  height: 32px;
-  padding-inline: var(--spacing-3);
-  border: 0;
-  border-radius: var(--radius-2, 6px);
-  font-family: var(--font-family-code);
-  font-size: 1rem;
-  letter-spacing: 0.15em;
-  cursor: pointer;
-}
-.pin[aria-pressed="false"] {
-  background: var(--color-accent);
-  color: var(--color-accent);
-  user-select: none;
-}
-.pin[aria-pressed="true"] {
-  background: var(--color-neutral);
-  color: var(--color-text-primary);
 }
 
 /* 학생 실습 화면 */
