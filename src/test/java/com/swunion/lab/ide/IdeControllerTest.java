@@ -1,6 +1,7 @@
 package com.swunion.lab.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
@@ -14,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.swunion.lab.agent.AgentTrigger;
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.check.Issue;
 import com.swunion.lab.check.IssueType;
 import com.swunion.lab.config.LabProperties;
@@ -25,6 +27,7 @@ import com.swunion.lab.dashboard.DashboardService;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.help.HelpRequest;
 import com.swunion.lab.help.HelpRequestRepository;
+import com.swunion.lab.help.HelpStatus;
 import com.swunion.lab.session.EnvStatus;
 import com.swunion.lab.session.HealthWaiter;
 import com.swunion.lab.session.SessionRepository;
@@ -66,7 +69,7 @@ class IdeControllerTest {
 	static final String BUSY = "에이전트가 처리 중입니다. 잠시 후 다시 시도해 주세요";
 	static final Map<String, Object> UNAUTHORIZED = Map.of("error", "인증 정보가 없습니다");
 
-	// 테스트마다 새 인스턴스가 만들어지지만 DB는 클래스 안에서 나눠 쓰므로 수업 수업 코드가 겹치지 않게 센다.
+	// 테스트마다 새 인스턴스가 만들어지지만 DB는 클래스 안에서 나눠 쓰므로 수업 코드가 겹치지 않게 센다.
 	static final AtomicInteger seq = new AtomicInteger();
 
 	final SecureRandom random = new SecureRandom();
@@ -214,7 +217,15 @@ class IdeControllerTest {
 				.andExpect(jsonPath("$.latestHelp.status").value("PROCESSING"))
 				.andExpect(jsonPath("$.latestHelp.errorType").value("KeyError"))
 				.andExpect(jsonPath("$.latestHelp.escalated").value(false))
+				// 처리 중에는 분류가 아직 없다. 키는 있고 값만 null이다.
+				.andExpect(jsonPath("$.latestHelp.classification").value(nullValue()))
 				.andExpect(jsonPath("$.latestHelp.errorText").doesNotExist());
+
+		HelpRequest saved = helps.findFirstBySessionIdOrderByIdDesc(a.id()).orElseThrow();
+		helps.updateResult(saved.getId(), HelpStatus.EXPLAINED, "설명", false, Classification.CODE);
+
+		readStatus(a.key()).andExpect(status().isOk())
+				.andExpect(jsonPath("$.latestHelp.classification").value("CODE"));
 	}
 
 	@Test

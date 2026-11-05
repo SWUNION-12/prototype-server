@@ -11,11 +11,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.swunion.lab.agent.Classification;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseStatus;
-import com.swunion.lab.agent.Classification;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.help.HelpRequest;
 import com.swunion.lab.help.HelpRequestRepository;

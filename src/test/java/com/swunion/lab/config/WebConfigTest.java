@@ -5,9 +5,11 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.handler;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.swunion.lab.session.StudentController;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.resource.ResourceResolverChain;
 
-// 정적 파일은 src/test/resources/static의 고정 파일이다. 테스트 classpath가 main보다 앞이라 main의 옛 join.html을 가린다.
+// 정적 파일은 src/test/resources/static의 고정 파일이다. main에는 정적 파일이 없다(jar를 만들 때만 web/out이 들어온다).
 @SpringBootTest(properties = {
 		"spring.config.import=optional:file:./build/no-such.env[.properties]",
 		"spring.datasource.url=jdbc:h2:mem:webconfig"
@@ -63,8 +65,9 @@ class WebConfigTest {
 	@Test
 	void unknownPathIs404() throws Exception {
 		mvc.perform(get("/nope")).andExpect(status().isNotFound());
-		// 컨트롤러가 먼저 받으므로 정적 대체가 API 404를 가로채지 않는다.
-		mvc.perform(get("/api/s/없는토큰")).andExpect(status().isNotFound());
+		// 컨트롤러가 먼저 받으므로 정적 대체가 API 404를 가로채지 않는다. 404만 봐서는 둘을 구별할 수 없어 처리기 종류를 본다.
+		mvc.perform(get("/api/s/없는토큰")).andExpect(status().isNotFound())
+				.andExpect(handler().handlerType(StudentController.class));
 	}
 
 	@Test

@@ -1,5 +1,6 @@
 package com.swunion.lab.help;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -42,7 +43,7 @@ class HelpResultListenerTest {
 
 		listener.onFinished(new AgentFinishedEvent(a, 9L));
 
-		verify(helps).updateResult(org.mockito.ArgumentMatchers.eq(9L), org.mockito.ArgumentMatchers.eq(HelpStatus.ESCALATED),
-				isNull(), org.mockito.ArgumentMatchers.eq(true), isNull());
+		verify(helps).updateResult(eq(9L), eq(HelpStatus.ESCALATED),
+				isNull(), eq(true), isNull());
 	}
 }
