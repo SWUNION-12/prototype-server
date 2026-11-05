@@ -112,19 +112,19 @@ function InfoStep({ code, onBack }: { code: string; onBack: () => void }) {
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <div className="flabel">PIN 4자리</div>
-      <CellInput length={PIN_LENGTH} value={pin} onChange={setPin} accept={acceptPin} label="PIN" isSecret isNumeric />
-      <div className="flabel">PIN 확인</div>
+      <div className="flabel">비밀번호 4자리</div>
+      <CellInput length={PIN_LENGTH} value={pin} onChange={setPin} accept={acceptPin} label="비밀번호" isSecret isNumeric />
+      <div className="flabel">비밀번호 확인</div>
       <CellInput
         length={PIN_LENGTH}
         value={pinAgain}
         onChange={setPinAgain}
         accept={acceptPin}
-        label="PIN 확인"
+        label="비밀번호 확인"
         isSecret
         isNumeric
       />
-      {isMismatch && <div className="field-error">PIN이 일치하지 않아요.</div>}
+      {isMismatch && <div className="field-error">비밀번호가 일치하지 않아요.</div>}
       <button type="submit" className="btn btn--blue btn--block submit-gap" disabled={!ready || busy}>
         {busy ? "입장하는 중" : "입장하기"}
       </button>

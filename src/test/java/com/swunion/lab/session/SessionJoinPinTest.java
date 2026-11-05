@@ -629,7 +629,7 @@ class SessionJoinPinTest {
 		JoinException e = rejected("김철수", pin);
 
 		assertThat(e.status()).isEqualTo(400);
-		assertThat(e.getMessage()).contains("PIN");
+		assertThat(e.getMessage()).contains("비밀번호");
 		assertThat(sessions.count()).isZero();
 		assertThat(docker.touched()).isFalse();
 	}

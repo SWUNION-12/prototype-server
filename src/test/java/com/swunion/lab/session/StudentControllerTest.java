@@ -314,10 +314,10 @@ class StudentControllerTest {
 		join("CTRL04", "수빈", "1111").andExpect(status().isCreated());
 
 		join("CTRL04", "수빈", "12a4").andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.error").value(containsString("PIN")));
+				.andExpect(jsonPath("$.error").value(containsString("비밀번호")));
 		mvc.perform(post("/api/join").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"entryCode\":\"CTRL04\",\"name\":\"수빈\"}"))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("PIN")));
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("비밀번호")));
 		MvcResult wrong = join("CTRL04", "수빈", "0000").andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.error").value(containsString("남은 기회 4번")))
 				.andExpect(jsonPath("$.token").doesNotExist())

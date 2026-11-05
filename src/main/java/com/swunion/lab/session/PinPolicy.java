@@ -30,7 +30,7 @@ public class PinPolicy {
 	/** 숫자 정확히 4자리가 아니면 400. 공백도 다듬지 않는다(정한 PIN과 다른 값이 저장되지 않게). */
 	public void validate(String pin) {
 		if (pin == null || !FORMAT.matcher(pin).matches()) {
-			throw new JoinException("PIN은 숫자 4자리로 입력해 주세요.");
+			throw new JoinException("비밀번호는 숫자 4자리로 입력해 주세요.");
 		}
 	}
 
@@ -60,13 +60,13 @@ public class PinPolicy {
 	JoinException wrongPin(int failures) {
 		int left = MAX_FAILURES - failures;
 		if (left > 0) {
-			return new JoinException("PIN이 맞지 않습니다. 남은 기회 " + left + "번", 403);
+			return new JoinException("비밀번호가 맞지 않습니다. 남은 기회 " + left + "번", 403);
 		}
-		return new JoinException("PIN이 맞지 않습니다. " + LOCK.toMinutes() + "분 뒤 다시 시도하세요", 403);
+		return new JoinException("비밀번호가 맞지 않습니다. " + LOCK.toMinutes() + "분 뒤 다시 시도하세요", 403);
 	}
 
 	JoinException locked(Duration remaining) {
-		return new JoinException("PIN을 너무 많이 틀렸습니다. " + minutesRoundedUp(remaining) + "분 뒤 다시 시도하세요", 429);
+		return new JoinException("비밀번호를 너무 많이 틀렸습니다. " + minutesRoundedUp(remaining) + "분 뒤 다시 시도하세요", 429);
 	}
 
 	// 4분 1초 남았을 때 "4분 뒤"라고 하면 학생이 그때 다시 와서 또 거절된다.
