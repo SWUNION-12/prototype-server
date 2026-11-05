@@ -229,6 +229,21 @@ class SessionServiceTest {
 	}
 
 	@Test
+	void ideUrlFollowsProxyTemplate() {
+		StudentSession s = join("ABC123", "철수");
+		// HTTPS 리버스 프록시 뒤에서는 IDE도 같은 주소 아래 경로로 연다. http 직접 포트로는 webview가 동작하지 않는다.
+		service.setIdeUrlTemplate("{base}/ide/{port}/");
+		// {base}는 public-base-url 그대로다(이 테스트 설정은 포트 8080이 붙은 주소).
+		assertThat(service.ideUrl(s)).isEqualTo("http://lab.example.com:8080/ide/" + s.getHostPort() + "/");
+	}
+
+	@Test
+	void ideUrlTemplateMustContainPort() {
+		assertThatThrownBy(() -> service.setIdeUrlTemplate("{base}/ide/")).isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("{port}");
+	}
+
+	@Test
 	void restartPersistsNewHostPort() {
 		StudentSession s = join("ABC123", "철수");
 		int old = s.getHostPort();

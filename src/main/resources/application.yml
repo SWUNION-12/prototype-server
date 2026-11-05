@@ -19,6 +19,9 @@ lab:
   check-interval-seconds: ${CHECK_INTERVAL_SECONDS:15}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   ide-bind-address: ${IDE_BIND_ADDRESS:127.0.0.1}
+  # 학생 화면의 IDE 주소. {base}=public-base-url, {host}=그 호스트, {port}=학생 IDE 포트.
+  # 배포(HTTPS 리버스 프록시)에서는 {base}/ide/{port}/ 로 바꾼다. http 직접 포트로는 실습 도우미 패널이 뜨지 않는다.
+  ide-url-template: ${IDE_URL_TEMPLATE:http://{host}:{port}/}
   data-dir: ./data
   # :2부터 IDE 도움 패널 확장("실습 도우미")이 들어 있다. scripts/build-base-image.sh로 만든다.
   base-image: swunion/lab-base:2

@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
@@ -420,9 +421,26 @@ public class SessionService {
 		return health.awaitHealthy(result.hostPort(), HEALTH_TIMEOUT);
 	}
 
+	/** 기본은 학생 브라우저가 IDE 포트로 바로 접속하는 주소다. 로컬 개발에서는 localhost라 안전한 연결로 취급된다. */
+	public static final String DEFAULT_IDE_URL_TEMPLATE = "http://{host}:{port}/";
+
+	// http로 localhost가 아닌 주소에 접속하면 브라우저가 안전한 연결로 보지 않아 VS Code webview(실습 도우미 패널)가
+	// 뜨지 않는다. 배포에서는 HTTPS 리버스 프록시 아래 경로({base}/ide/{port}/)로 열도록 바꾼다.
+	private String ideUrlTemplate = DEFAULT_IDE_URL_TEMPLATE;
+
+	@Value("${lab.ide-url-template:" + DEFAULT_IDE_URL_TEMPLATE + "}")
+	public void setIdeUrlTemplate(String template) {
+		if (template == null || !template.contains("{port}")) {
+			throw new IllegalArgumentException("lab.ide-url-template에는 {port}가 있어야 합니다: " + template);
+		}
+		this.ideUrlTemplate = template;
+	}
+
 	public String ideUrl(StudentSession s) {
+		String base = props.publicBaseUrl().replaceAll("/+$", "");
 		String host = URI.create(props.publicBaseUrl()).getHost();
-		return "http://" + (host == null ? "localhost" : host) + ":" + s.getHostPort() + "/";
+		return ideUrlTemplate.replace("{base}", base).replace("{host}", host == null ? "localhost" : host)
+				.replace("{port}", String.valueOf(s.getHostPort()));
 	}
 
 	public List<Object> issues(StudentSession s) {
