@@ -17,6 +17,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,6 +31,7 @@ public class AuthResponses implements AuthenticationEntryPoint, AuthenticationSu
 	public static final String LOGIN_PAGE = "/instructor/login";
 	static final String BAD_CREDENTIALS = "아이디 또는 비밀번호를 확인해 주세요.";
 	static final String LOGIN_REQUIRED = "강사 로그인이 필요합니다.";
+	static final String FORBIDDEN = "권한이 없습니다.";
 	static final String CSRF_REJECTED = "보안 확인 값이 맞지 않습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.";
 
 	private static final RequestMatcher API = SecurityConfig.paths().matcher("/api/**");
@@ -78,11 +80,11 @@ public class AuthResponses implements AuthenticationEntryPoint, AuthenticationSu
 		writeError(response, HttpStatus.UNAUTHORIZED, BAD_CREDENTIALS);
 	}
 
-	// 인가 규칙은 로그인 여부만 보므로 여기 오는 것은 CSRF 값이 없거나 틀린 요청이다.
+	// CSRF 값이 없거나 틀린 요청만 그 안내를 받는다. 나중에 역할 규칙이 생겨도 권한 거부가 CSRF 오류로 보이지 않게 가른다.
 	@Override
 	public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException e)
 			throws IOException {
-		writeError(response, HttpStatus.FORBIDDEN, CSRF_REJECTED);
+		writeError(response, HttpStatus.FORBIDDEN, e instanceof CsrfException ? CSRF_REJECTED : FORBIDDEN);
 	}
 
 	private void writeError(HttpServletResponse response, HttpStatus status, String message) throws IOException {

@@ -21,11 +21,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.web.csrf.MissingCsrfTokenException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.json.JsonMapper;
 
 // 실제 쿠키 흐름(XSRF-TOKEN 쿠키 → X-XSRF-TOKEN 헤더)을 그대로 쓴다. spring-security-test의 csrf()는 이 컨텍스트의
 // CSRF 저장소를 세션 저장소로 바꿔 끼우므로 여기서는 쓰지 않는다. 정적 파일은 src/test/resources/static의 고정 파일이다.
@@ -76,8 +81,23 @@ class AuthFlowTest {
 		mvc.perform(post("/api/auth/login").session(session).contentType(MediaType.APPLICATION_FORM_URLENCODED)
 						.content(form(PASSWORD)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.error").isNotEmpty());
+				.andExpect(jsonPath("$.error").value(AuthResponses.CSRF_REJECTED));
 		mvc.perform(get("/api/courses").session(session)).andExpect(status().isUnauthorized());
+	}
+
+	// CSRF가 아닌 권한 거부는 CSRF 안내를 받지 않는다(지금 규칙으로는 HTTP로 만들 수 없어 핸들러를 직접 부른다).
+	@Test
+	void nonCsrfAccessDeniedGetsGenericMessage() throws Exception {
+		AuthResponses responses = new AuthResponses(JsonMapper.builder().build());
+		MockHttpServletResponse plain = new MockHttpServletResponse();
+		responses.handle(new MockHttpServletRequest(), plain, new AccessDeniedException("denied"));
+		assertThat(plain.getStatus()).isEqualTo(403);
+		assertThat(plain.getContentAsString(StandardCharsets.UTF_8)).contains("\"error\":\"권한이 없습니다.\"");
+
+		MockHttpServletResponse csrf = new MockHttpServletResponse();
+		responses.handle(new MockHttpServletRequest(), csrf, new MissingCsrfTokenException(null));
+		assertThat(csrf.getStatus()).isEqualTo(403);
+		assertThat(csrf.getContentAsString(StandardCharsets.UTF_8)).contains(AuthResponses.CSRF_REJECTED);
 	}
 
 	@Test
