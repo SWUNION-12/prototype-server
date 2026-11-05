@@ -1,20 +1,13 @@
 "use client";
 
-import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { Center } from "@astryxdesign/core/Center";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { VStack } from "@astryxdesign/core/VStack";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { EyeIcon, EyeOffIcon, LockIcon, UserIcon } from "@/components/icons";
+import { Notice } from "@/components/Notice";
 import { ApiError, auth, INSTRUCTOR_HOME, LOGIN_PATH } from "@/lib/api";
 import { SERVICE_NAME } from "@/lib/display";
 
 // 로그인 뒤 돌아갈 곳. 같은 사이트의 강사 화면 주소만 따르고, 아니면 강사 첫 화면으로 간다.
-// 정적 빌드의 파일 주소(.html, RSC 조각 .txt)와 로그인 화면 자신은 돌아갈 화면이 아니다.
 function safeNext(raw: string | null): string {
   if (!raw || raw.startsWith("//")) return INSTRUCTOR_HOME;
   const path = raw.split(/[?#]/, 1)[0];
@@ -29,6 +22,7 @@ function LoginForm() {
   const next = safeNext(useSearchParams().get("next"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 첫 확인 요청이 CSRF 쿠키를 받아 온다. 로그인 요청은 그 쿠키 값을 헤더로 보내야 하므로 확인이 끝난 뒤 보낸다.
@@ -38,7 +32,6 @@ function LoginForm() {
     let active = true;
     const me = auth.me();
     checked.current = me.catch(() => null);
-    // 이미 로그인돼 있으면 바로 돌아간다.
     me.then(
       () => {
         if (active) router.replace(next);
@@ -65,52 +58,53 @@ function LoginForm() {
   }
 
   return (
-    <Card padding={8}>
-      <VStack as="form" gap={5} onSubmit={submit}>
-        {error && <Banner status="error" title={error} />}
-        <TextInput
-          label="아이디"
-          size="lg"
-          value={username}
-          onChange={setUsername}
-          placeholder="아이디를 입력해주세요"
+    <form className="login-box" onSubmit={submit}>
+      <div className="login-logo">{SERVICE_NAME}</div>
+      {error && <Notice status="error" title={error} />}
+      <label className="login-field">
+        <UserIcon />
+        <input
+          placeholder="아이디"
+          aria-label="아이디"
           autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
         />
-        <TextInput
-          label="비밀번호"
-          size="lg"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          placeholder="비밀번호를 입력해주세요"
+      </label>
+      <label className="login-field">
+        <LockIcon />
+        <input
+          type={showPassword ? "text" : "password"}
+          placeholder="비밀번호"
+          aria-label="비밀번호"
           autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
         />
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          label="로그인"
-          width="100%"
-          isLoading={busy}
-          isDisabled={!username || !password}
-        />
-      </VStack>
-    </Card>
+        <button
+          type="button"
+          className="login-eye"
+          aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+          onClick={() => setShowPassword(!showPassword)}
+        >
+          {showPassword ? <EyeIcon /> : <EyeOffIcon />}
+        </button>
+      </label>
+      <button type="submit" className="btn btn--blue btn--block login-submit" disabled={busy || !username || !password}>
+        {busy ? "로그인하는 중" : "로그인"}
+      </button>
+    </form>
   );
 }
 
 export default function InstructorLoginPage() {
   return (
-    <Center className="app-root" padding={4}>
-      <VStack gap={8} width="100%" maxWidth={400}>
-        <VStack gap={1} hAlign="center">
-          <Heading level={1}>{SERVICE_NAME}</Heading>
-          <Text type="supporting">강사 로그인</Text>
-        </VStack>
+    <div className="page page--corners" style={{ paddingTop: 0 }}>
+      <div className="center center--full">
         <Suspense>
           <LoginForm />
         </Suspense>
-      </VStack>
-    </Center>
+      </div>
+    </div>
   );
 }

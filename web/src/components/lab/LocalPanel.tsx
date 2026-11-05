@@ -1,18 +1,11 @@
 "use client";
 
-import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { CodeBlock } from "@astryxdesign/core/CodeBlock";
-import { Divider } from "@astryxdesign/core/Divider";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Link } from "@astryxdesign/core/Link";
-import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
-import { Spinner } from "@astryxdesign/core/Spinner";
-import { Text } from "@astryxdesign/core/Text";
-import { TextArea } from "@astryxdesign/core/TextArea";
-import { VStack } from "@astryxdesign/core/VStack";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
+import { CopyIcon } from "@/components/icons";
+import { Notice } from "@/components/Notice";
+import { useToast } from "@/components/Toast";
 import { ApiError, CODE_ZIP_URL, student } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import type { InstallInfo, Os, VerifyResult } from "@/lib/types";
 
 // 서버가 준 주소는 http(s)나 같은 사이트 경로일 때만 링크로 쓴다. 브라우저는 `\`를 `/`로 읽어 `/\evil.com`이
@@ -21,16 +14,24 @@ const isSafeHref = (u: string) => /^https?:\/\/\S+$/i.test(u) || /^\/[^\s/\\]\S*
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
-const noopSubscribe = () => () => {};
-
-// CodeBlock의 복사 버튼은 Clipboard API만 쓰고 대체 처리를 끼울 자리가 없다(onCopy는 복사 뒤 알림일 뿐이다).
-// http로 들어와 보안 컨텍스트가 아니면 버튼이 조용히 실패하므로, 그때는 패널 위에서 한 번 직접 선택해 복사하라고 알린다.
-function useCanCopy() {
-  return useSyncExternalStore(noopSubscribe, () => window.isSecureContext, () => true);
-}
-
 function Command({ code }: { code: string }) {
-  return <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />;
+  const showToast = useToast();
+
+  async function copy() {
+    const ok = await copyText(code);
+    showToast(
+      ok ? { body: "명령을 복사했습니다." } : { body: "복사하지 못했습니다. 명령을 직접 선택해 복사해 주세요.", type: "error" },
+    );
+  }
+
+  return (
+    <div className="cmd">
+      <button type="button" aria-label="명령 복사" onClick={copy}>
+        <CopyIcon />
+      </button>
+      {code}
+    </div>
+  );
 }
 
 function Steps({ os, info }: { os: Os; info: InstallInfo }) {
@@ -73,78 +74,63 @@ function Steps({ os, info }: { os: Os; info: InstallInfo }) {
   const terminal = os === "windows" ? "PowerShell" : "터미널";
 
   return (
-    <VStack gap={5}>
-      <VStack gap={3}>
-        <Text weight="semibold">1. 내 컴퓨터 환경 확인</Text>
-        <Text type="supporting">{terminal}에서 실행하고, 출력된 세 줄을 붙여넣어 주세요.</Text>
-        <Command code={info.diagnoseCommand} />
-        <TextArea
-          label="출력 결과"
-          isLabelHidden
-          rows={3}
-          placeholder={"os=...\narch=...\npython=..."}
-          value={diagText}
-          onChange={setDiagText}
-          hasSpellCheck={false}
-          status={
-            diagError
-              ? { type: "error", message: diagError }
-              : diagnosed
-                ? { type: "success", message: "확인했어요. 이제 설치를 진행해 주세요." }
-                : undefined
-          }
-        />
-        <HStack hAlign="end">
-          <Button label="확인" onClick={submitDiagnostics} isLoading={diagBusy} isDisabled={!diagText.trim()} />
-        </HStack>
-      </VStack>
+    <>
+      <p className="step-title">1. 내 컴퓨터 환경 확인</p>
+      <p className="small">{terminal}에서 실행하고, 출력된 세 줄을 붙여넣어 주세요.</p>
+      <Command code={info.diagnoseCommand} />
+      <textarea
+        aria-label="출력 결과"
+        placeholder={"os=...\narch=...\npython=..."}
+        spellCheck={false}
+        value={diagText}
+        onChange={(e) => setDiagText(e.target.value)}
+      />
+      {diagError && <p className="panel-note panel-note--error">{diagError}</p>}
+      {diagnosed && <p className="panel-note">확인했어요. 이제 설치를 진행해 주세요.</p>}
+      <div className="panel-foot">
+        <button type="button" className="btn" disabled={diagBusy || !diagText.trim()} onClick={submitDiagnostics}>
+          확인
+        </button>
+      </div>
 
       {diagnosed && (
         <>
-          <Divider />
-          <VStack gap={3}>
-            <Text weight="semibold">2. 설치</Text>
-            <Text type="supporting">
-              {terminal}에서 실행하면 수업과 같은 환경이 설치되고 검증 결과가 출력돼요.
-            </Text>
-            <Command code={info.installCommand} />
-            {isSafeHref(info.scriptUrl) ? (
-              <Link href={info.scriptUrl} isExternalLink as="a">
-                실행 전에 스크립트 내용 보기
-              </Link>
-            ) : (
-              <Text type="supporting">스크립트 주소를 확인할 수 없습니다. 강사에게 알려 주세요.</Text>
-            )}
-          </VStack>
-          <Divider />
-          <VStack gap={3}>
-            <Text weight="semibold">3. 검증 결과 제출</Text>
-            <TextArea
-              label="검증 결과"
-              isLabelHidden
-              rows={5}
-              placeholder="설치가 끝나면 출력된 내용을 붙여넣어 주세요"
-              value={verifyText}
-              onChange={setVerifyText}
-              hasSpellCheck={false}
-              status={verifyError ? { type: "error", message: verifyError } : undefined}
-            />
-            <HStack hAlign="end">
-              <Button label="제출" onClick={submitVerify} isLoading={verifyBusy} isDisabled={!verifyText.trim()} />
-            </HStack>
-            {result && (
-              <Banner
-                status={result.ok ? "success" : "error"}
-                title={result.ok ? "설치가 끝났어요" : "설치 검증에 실패했어요"}
-                description={result.message}
-              >
-                {result.failed.length > 0 && <Text type="code">{result.failed.join(", ")}</Text>}
-              </Banner>
-            )}
-          </VStack>
+          <div className="divider" />
+          <p className="step-title">2. 설치</p>
+          <p className="small">{terminal}에서 실행하면 수업과 같은 환경이 설치되고 검증 결과가 출력돼요.</p>
+          <Command code={info.installCommand} />
+          {isSafeHref(info.scriptUrl) ? (
+            <a className="link-underline" href={info.scriptUrl} target="_blank" rel="noopener noreferrer">
+              실행 전에 스크립트 내용 보기
+            </a>
+          ) : (
+            <p className="small">스크립트 주소를 확인할 수 없습니다. 선생님에게 알려 주세요.</p>
+          )}
+
+          <div className="divider" />
+          <p className="step-title">3. 검증 결과 제출</p>
+          <textarea
+            aria-label="검증 결과"
+            placeholder="설치가 끝나면 출력된 내용을 붙여넣어 주세요"
+            spellCheck={false}
+            value={verifyText}
+            onChange={(e) => setVerifyText(e.target.value)}
+          />
+          {verifyError && <p className="panel-note panel-note--error">{verifyError}</p>}
+          <div className="panel-foot">
+            <button type="button" className="btn" disabled={verifyBusy || !verifyText.trim()} onClick={submitVerify}>
+              제출
+            </button>
+          </div>
+          {result && (
+            <Notice status={result.ok ? "success" : "error"} title={result.ok ? "설치가 끝났어요" : "설치 검증에 실패했어요"}>
+              {result.message}
+              {result.failed.length > 0 && <div className="mono">{result.failed.join(", ")}</div>}
+            </Notice>
+          )}
         </>
       )}
-    </VStack>
+    </>
   );
 }
 
@@ -152,7 +138,6 @@ export function LocalPanel() {
   const [os, setOs] = useState<Os>("macos");
   const [loaded, setLoaded] = useState<{ os: Os; info: InstallInfo } | null>(null);
   const [error, setError] = useState<{ os: Os; text: string } | null>(null);
-
   // 다운로드 코드는 받을 때마다 새로 만들어지고 10분 뒤 끝난다. "다시 받기"는 이 값을 올려 다시 요청한다.
   const [round, setRound] = useState(0);
 
@@ -173,53 +158,58 @@ export function LocalPanel() {
     };
   }, [os, round]);
 
-  const canCopy = useCanCopy();
   const info = loaded?.os === os ? loaded.info : null;
   const errorText = error?.os === os ? error.text : null;
 
   return (
-    <VStack gap={5}>
-      <SegmentedControl
-        label="내 컴퓨터 운영체제"
-        layout="fill"
-        value={os}
-        onChange={(v) => setOs(v as Os)}
-      >
-        <SegmentedControlItem value="macos" label="macOS" />
-        <SegmentedControlItem value="windows" label="Windows" />
-      </SegmentedControl>
-
-      {!canCopy && (
-        <Text type="supporting" role="status">
-          복사 버튼이 동작하지 않을 수 있어요. 명령은 직접 선택해 복사하세요.
-        </Text>
-      )}
+    <>
+      <div className="seg seg--fill" role="group" aria-label="내 컴퓨터 운영체제">
+        <button type="button" aria-pressed={os === "macos"} onClick={() => setOs("macos")}>
+          macOS
+        </button>
+        <button type="button" aria-pressed={os === "windows"} onClick={() => setOs("windows")}>
+          Windows
+        </button>
+      </div>
 
       {errorText && (
-        <VStack gap={2} hAlign="start">
-          <Banner status="error" title={errorText} />
-          {!info && <Button size="sm" variant="secondary" label="다시 받기" onClick={() => setRound((n) => n + 1)} />}
-        </VStack>
+        <Notice status="error" title={errorText}>
+          {!info && (
+            <div>
+              <button type="button" className="btn btn--pill" style={{ marginTop: 8 }} onClick={() => setRound((n) => n + 1)}>
+                다시 받기
+              </button>
+            </div>
+          )}
+        </Notice>
       )}
-      {!info && !errorText && <Spinner label="불러오는 중" />}
+      {!info && !errorText && (
+        <div className="state">
+          <span className="spinner" role="status" aria-label="불러오는 중" />
+        </div>
+      )}
       {/* 운영체제를 바꾸면 붙여넣은 내용이 맞지 않으므로 처음부터 다시 받는다. */}
       {info && (
         <>
-          <HStack gap={3} vAlign="center" wrap="wrap">
-            <Text type="supporting">10분 동안 쓸 수 있습니다. 지나면 다시 받으세요.</Text>
-            <Button size="sm" variant="secondary" label="다시 받기" onClick={() => setRound((n) => n + 1)} />
-          </HStack>
+          <div className="relink">
+            10분 동안 쓸 수 있습니다. 지나면 다시 받으세요.
+            <button type="button" className="btn btn--pill" onClick={() => setRound((n) => n + 1)}>
+              다시 받기
+            </button>
+          </div>
           <Steps key={os} os={os} info={info} />
         </>
       )}
 
-      <Divider />
-      <VStack gap={2}>
-        <Text weight="semibold">내 코드 내려받기</Text>
-        <Text type="supporting">클라우드에서 작성한 코드를 zip으로 받아요. 가상환경과 캐시는 빠져요.</Text>
-        {/* 파일 주소는 Next 링크가 미리 받지 않게 일반 앵커로 둔다(RSC 조각 요청이 404가 된다). */}
-        <Button label="코드 zip 다운로드" href={CODE_ZIP_URL} as="a" />
-      </VStack>
-    </VStack>
+      <div className="divider" />
+      <p className="step-title">내 코드 내려받기</p>
+      <p className="small" style={{ marginBottom: 12 }}>
+        클라우드에서 작성한 코드를 zip으로 받아요. 가상환경과 캐시는 빠져요.
+      </p>
+      {/* 파일 주소는 Next 링크가 미리 받지 않게 일반 앵커로 둔다. */}
+      <a className="btn btn--full" href={CODE_ZIP_URL}>
+        코드 zip 다운로드
+      </a>
+    </>
   );
 }

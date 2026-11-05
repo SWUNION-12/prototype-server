@@ -1,6 +1,2 @@
-# @astryxdesign/* 는 카나리 버전이 많아 전체 메타데이터가 65MB다. 출시 기간 검사를 켜면 전체본을 받느라 설치가 멈춘다.
+# 잠금 파일에 출시된 지 며칠 안 된 패키지가 있어도 설치가 막히지 않게 한다.
 minimumReleaseAge: 0
-# 두 패키지의 postinstall은 `astryx init` 안내 문구만 출력한다. 실행하지 않아도 된다.
-allowBuilds:
-  "@astryxdesign/cli": false
-  "@astryxdesign/core": false

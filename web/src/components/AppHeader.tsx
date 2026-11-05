@@ -1,35 +1,27 @@
-"use client";
-
-import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Text } from "@astryxdesign/core/Text";
-import { useToast } from "@astryxdesign/core/Toast";
-import { useState } from "react";
-import { ApiError, auth, LOGIN_PATH } from "@/lib/api";
+import Link from "next/link";
+import type { ReactNode } from "react";
 import { SERVICE_NAME } from "@/lib/display";
 
-// 강사 화면 머리말. 로그아웃하면 세션이 끝나고, 화면에 남은 수업 정보를 지우려고 로그인 화면을 새로 연다.
-export function AppHeader() {
-  const showToast = useToast();
-  const [busy, setBusy] = useState(false);
+type Props = {
+  home: string;
+  search?: ReactNode;
+  actions?: ReactNode;
+  nav?: ReactNode;
+};
 
-  async function logout() {
-    setBusy(true);
-    try {
-      await auth.logout();
-      window.location.replace(LOGIN_PATH);
-    } catch (e) {
-      showToast({ body: e instanceof ApiError ? e.message : "로그아웃하지 못했습니다.", type: "error" });
-      setBusy(false);
-    }
-  }
-
+export function AppHeader({ home, search, actions, nav }: Props) {
   return (
-    <HStack as="header" className="app-header" hAlign="between" vAlign="center">
-      <Text type="large" weight="semibold">
-        {SERVICE_NAME}
-      </Text>
-      <Button variant="ghost" size="sm" label="로그아웃" isLoading={busy} onClick={logout} />
-    </HStack>
+    <header className="site">
+      <div className="wrap">
+        <div className="site-row">
+          <Link className="logo" href={home}>
+            {SERVICE_NAME}
+          </Link>
+          {search}
+          <div className="site-actions">{actions}</div>
+        </div>
+        {nav && <nav className="site-nav">{nav}</nav>}
+      </div>
+    </header>
   );
 }

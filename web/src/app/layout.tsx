@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
-import { Noto_Sans_KR } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/display";
 import { Providers } from "./providers";
 
-const notoSansKr = Noto_Sans_KR({
-  weight: ["400", "500", "600", "700"],
+const mono = JetBrains_Mono({
+  weight: ["400", "500", "600", "700", "800"],
   subsets: ["latin"],
-  variable: "--font-noto-kr",
-  preload: false,
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -19,7 +18,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" className={notoSansKr.variable}>
+    <html lang="ko" className={mono.variable}>
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

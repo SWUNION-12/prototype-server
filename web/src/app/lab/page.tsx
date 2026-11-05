@@ -1,203 +1,135 @@
 "use client";
 
-import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Center } from "@astryxdesign/core/Center";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
-import { Spinner } from "@astryxdesign/core/Spinner";
-import { Text } from "@astryxdesign/core/Text";
-import { Tooltip } from "@astryxdesign/core/Tooltip";
-import { VStack } from "@astryxdesign/core/VStack";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { HelpIcon, LaptopIcon } from "@/components/icons";
-import { HelpPanel } from "@/components/lab/HelpPanel";
+import { CloseIcon, LaptopIcon } from "@/components/icons";
 import { IdeFrame } from "@/components/lab/IdeFrame";
 import { LocalPanel } from "@/components/lab/LocalPanel";
 import { EnvBadge } from "@/components/StatusBadge";
 import { ApiError, CODE_ZIP_URL, student } from "@/lib/api";
-import { SERVICE_NAME, RESUMED_KEY } from "@/lib/display";
+import { RESUMED_KEY, SERVICE_NAME } from "@/lib/display";
 import { usePoll } from "@/lib/use-poll";
 
-type Panel = "help" | "local" | null;
-
-const PANEL_TITLE = { help: "도움 요청", local: "내 PC로 이어가기" } as const;
-
-// 쿠키가 없거나 무효(다른 곳에서 재입장해 토큰이 바뀜, 남의 주소를 연 다른 브라우저)이면 404가 와서 조회를 멈추고 이 화면을 보인다.
+// 쿠키가 없거나 무효(다른 곳에서 재입장해 토큰이 바뀜)이면 404가 와서 조회를 멈추고 이 화면을 보인다.
 function Lost() {
   return (
-    <Center className="app-root" padding={4}>
-      <EmptyState
-        title="입장 정보를 찾을 수 없습니다."
-        description="다른 곳에서 다시 입장했거나 주소가 잘못되었어요. 수업 코드, 이름, PIN으로 다시 입장해 주세요."
-        actions={<Button variant="primary" label="입장 페이지로" href="/join" />}
-      />
-    </Center>
+    <div className="state state--full">
+      <b>입장 정보를 찾을 수 없습니다</b>
+      수업 코드, 이름, PIN으로 다시 입장해 주세요.
+      <Link className="btn btn--blue" href="/join">
+        입장 페이지로
+      </Link>
+    </div>
+  );
+}
+
+function Banner({ status = "warning", title, text, onDismiss }: {
+  status?: "warning" | "error" | "success";
+  title: string;
+  text?: string;
+  onDismiss?: () => void;
+}) {
+  return (
+    <div className={`lab-banner lab-banner--${status}`} role={status === "error" ? "alert" : "status"}>
+      <div>
+        <b>{title}</b>
+        {text && <span>{text}</span>}
+      </div>
+      {onDismiss && (
+        <button type="button" aria-label="닫기" onClick={onDismiss}>
+          ×
+        </button>
+      )}
+    </div>
   );
 }
 
 function Lab({ resumed }: { resumed: boolean }) {
-  const router = useRouter();
-  const { data: me, error, refresh } = usePoll(
-    student.me,
-    5000,
-    (e) => e instanceof ApiError && e.status === 404,
-  );
-  const [panel, setPanel] = useState<Panel>(null);
+  const { data: me, error } = usePoll(student.me, 5000, (e) => e instanceof ApiError && e.status === 404);
+  const [isLocalOpen, setIsLocalOpen] = useState(false);
   const [resumedDismissed, setResumedDismissed] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const [leaveError, setLeaveError] = useState<string | null>(null);
-
-  async function leave() {
-    setLeaving(true);
-    setLeaveError(null);
-    try {
-      await student.logout();
-    } catch (e) {
-      // 404면 이미 쿠키가 없는 것이라 나가도 된다. 그 밖의 실패는 쿠키가 남아 있으니 알린다.
-      if (!(e instanceof ApiError && e.status === 404)) {
-        setLeaveError(e instanceof ApiError ? e.message : "나가지 못했습니다.");
-        setLeaving(false);
-        return;
-      }
-    }
-    router.replace("/join");
-  }
 
   if (error instanceof ApiError && error.status === 404) return <Lost />;
 
   if (!me) {
     return (
-      <Center className="app-root">
+      <div className="state state--full">
         {error != null ? (
-          <Banner status="error" title="실습 정보를 불러오지 못했습니다. 다시 시도하고 있어요." />
+          "실습 정보를 불러오지 못했습니다. 다시 시도하고 있어요."
         ) : (
-          <Spinner size="lg" label="불러오는 중" />
+          <span className="spinner" role="status" aria-label="불러오는 중" />
         )}
-      </Center>
+      </div>
     );
   }
 
   const isEnded = me.courseStatus === "ENDED";
   const isIdeUrlSafe = /^https?:\/\/\S+\/$/.test(me.ideUrl);
-  // 서버가 이미 한국어 문장으로 풀어 준다.
-  const issues = me.issuesText.join("\n");
-  const toggle = (next: Exclude<Panel, null>) => setPanel(panel === next ? null : next);
-  const badge = <EnvBadge status={me.envStatus} prefix="환경" />;
 
   return (
     <div className="lab">
       <header className="lab-header">
-        <HStack gap={3} vAlign="center" wrap="wrap">
-          <Text type="large" weight="semibold">
-            {SERVICE_NAME}
-          </Text>
-          <span className="lab-header-divider" aria-hidden />
-          <Text weight="medium">{me.courseName}</Text>
-          <Text type="supporting">{me.name}</Text>
-        </HStack>
-        <HStack gap={3} vAlign="center" wrap="wrap">
-          {issues ? (
-            <Tooltip content={<Text className="pre-wrap">{issues}</Text>}>{badge}</Tooltip>
-          ) : (
-            badge
-          )}
-          <Button
-            variant={panel === "local" ? "secondary" : "ghost"}
-            label="내 PC로 이어가기"
-            icon={<Icon icon={LaptopIcon} size="sm" />}
-            onClick={() => toggle("local")}
-          />
-          <Button
-            variant={panel === "help" ? "secondary" : "primary"}
-            label="도움 요청"
-            isDisabled={isEnded && panel !== "help"}
-            icon={<Icon icon={HelpIcon} size="sm" />}
-            onClick={() => toggle("help")}
-          />
-          <Button variant="ghost" label="나가기" isLoading={leaving} onClick={leave} />
-        </HStack>
+        <span className="logo">{SERVICE_NAME}</span>
+        <span className="lab-sep" aria-hidden />
+        <span className="lab-course">{me.courseName}</span>
+        <span className="lab-name">{me.name}</span>
+        <div className="lab-actions">
+          <EnvBadge status={me.envStatus} prefix="환경" title={me.issuesText.join("\n") || undefined} />
+          <button
+            type="button"
+            className={isLocalOpen ? "btn btn--sm" : "btn btn--sm btn--ghost"}
+            aria-pressed={isLocalOpen}
+            onClick={() => setIsLocalOpen(!isLocalOpen)}
+          >
+            <LaptopIcon />내 PC로 이어가기
+          </button>
+        </div>
       </header>
 
-      {leaveError && <Banner container="section" status="error" title={leaveError} />}
-      {error != null && (
-        <Banner container="section" status="warning" title="서버에 연결하지 못했습니다. 다시 시도하고 있어요." />
-      )}
-      {/* 마우스를 올려야만 보이는 툴팁은 터치 기기에서 볼 수 없어 본문에도 보인다. */}
+      {error != null && <Banner title="서버에 연결하지 못했습니다. 다시 시도하고 있어요." />}
       {me.envStatus === "MISMATCH" && me.issuesText.length > 0 && (
-        <Banner container="section" status="warning" title="내 환경이 수업과 다릅니다">
-          <VStack gap={1}>
-            {me.issuesText.map((line, i) => (
-              <Text key={i} type="supporting">
-                {line}
-              </Text>
-            ))}
-          </VStack>
-        </Banner>
+        <Banner title="내 환경이 수업과 다릅니다" text={me.issuesText.join(" · ")} />
       )}
       {resumed && !resumedDismissed && (
         <Banner
-          container="section"
           status="success"
-          title="이전 작업 공간으로 돌아왔습니다."
-          isDismissable
+          title="이전 세션으로 돌아왔습니다."
+          text="작업하던 파일은 그대로 있습니다."
           onDismiss={() => setResumedDismissed(true)}
         />
       )}
       {me.workspaceLost && (
-        <Banner
-          container="section"
-          status="warning"
-          title="이전 작업 공간을 찾지 못해 새로 만들었습니다."
-          description="이전에 작성한 코드는 복구되지 않았어요. 필요하면 강사에게 알려 주세요."
-        />
+        <Banner title="이전 작업 공간을 찾지 못해 새로 만들었습니다." text="이전에 작성한 코드는 복구되지 않았어요." />
       )}
 
       <div className="lab-body">
         <section className="lab-ide" aria-label="실습 IDE">
           {isEnded ? (
-            <Center width="100%" className="lab-ide-state" padding={4}>
-              <EmptyState
-                title="수업이 종료되었습니다"
-                description="작성한 코드는 남아 있어요. 아래 버튼으로 내려받을 수 있어요."
-                // 파일 주소라 Next 링크가 아닌 일반 앵커로 둔다. Next 링크는 화면에 보이면 RSC 조각(.../code.zip/__next._tree.txt)을 미리 받아 404가 난다.
-                actions={<Button variant="primary" label="코드 zip 다운로드" href={CODE_ZIP_URL} as="a" />}
-              />
-            </Center>
+            <div className="state">
+              <b>수업이 종료되었습니다</b>
+              작성한 코드는 남아 있어요.
+              {/* 파일 주소는 Next 링크가 미리 받지 않게 일반 앵커로 둔다. */}
+              <a className="btn btn--blue" href={CODE_ZIP_URL}>
+                코드 zip 다운로드
+              </a>
+            </div>
           ) : isIdeUrlSafe ? (
             <IdeFrame ideUrl={me.ideUrl} password={me.idePassword} />
           ) : (
-            <Center width="100%" className="lab-ide-state" padding={4}>
-              <Banner status="error" title="IDE 주소를 확인할 수 없습니다. 강사에게 알려 주세요." />
-            </Center>
+            <div className="state">IDE 주소를 확인할 수 없습니다. 선생님에게 알려 주세요.</div>
           )}
         </section>
 
-        {panel && (
-          <aside className="lab-panel" aria-label={PANEL_TITLE[panel]}>
-            <div className="lab-panel-header">
-              <Heading level={2}>{PANEL_TITLE[panel]}</Heading>
-              <IconButton
-                variant="ghost"
-                label="패널 닫기"
-                icon={<Icon icon="close" size="sm" />}
-                onClick={() => setPanel(null)}
-              />
+        {isLocalOpen && (
+          <aside className="panel" aria-label="내 PC로 이어가기">
+            <div className="panel-head">
+              <h2>내 PC로 이어가기</h2>
+              <button type="button" aria-label="패널 닫기" onClick={() => setIsLocalOpen(false)}>
+                <CloseIcon />
+              </button>
             </div>
-            <div className="lab-panel-body">
-              {panel === "help" ? (
-                <HelpPanel
-                  latestHelp={me.latestHelp}
-                  isCourseOpen={!isEnded}
-                  onChange={refresh}
-                />
-              ) : (
-                <LocalPanel />
-              )}
+            <div className="panel-body">
+              <LocalPanel />
             </div>
           </aside>
         )}
@@ -210,12 +142,11 @@ export default function LabPage() {
   // 재입장 안내는 한 번만 보인다. 입장 화면이 탭 저장소에 남긴 표시를 읽고(렌더 중에는 읽기만 한다) 효과에서 지운다.
   const [resumed] = useState(() => {
     try {
-      return sessionStorage.getItem(RESUMED_KEY) === "1";
+      return typeof window !== "undefined" && sessionStorage.getItem(RESUMED_KEY) === "1";
     } catch {
       return false;
     }
   });
-  // 주소에 t 값이 남아 있어도 값은 쓰지 않고 주소창에서만 지운다. 토큰이 기록이나 어깨너머로 남지 않게 한다.
   useEffect(() => {
     try {
       sessionStorage.removeItem(RESUMED_KEY);
@@ -223,6 +154,7 @@ export default function LabPage() {
       // 저장소가 막혀 있어도 화면에는 영향이 없다.
     }
   }, []);
+  // 주소에 옛 토큰이 남아 있어도 값은 쓰지 않고 주소창에서만 지운다.
   useEffect(() => {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("t") && !url.searchParams.has("resumed")) return;

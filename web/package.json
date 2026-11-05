@@ -6,19 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
-    "astryx": "astryx"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@astryxdesign/core": "0.7.8",
-    "@astryxdesign/theme-neutral": "0.7.8",
-    "@stylexjs/stylex": "^0.19.1",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@astryxdesign/cli": "0.7.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

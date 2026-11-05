@@ -1,21 +1,11 @@
 "use client";
 
-import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { Card } from "@astryxdesign/core/Card";
-import { HStack } from "@astryxdesign/core/HStack";
-import { MoreMenu } from "@astryxdesign/core/MoreMenu";
-import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
-import { StatusDot } from "@astryxdesign/core/StatusDot";
-import { Badge } from "@astryxdesign/core/Badge";
-import { pixel, proportional, Table, type TableColumn, useTableRowExpansion } from "@astryxdesign/core/Table";
-import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { useToast } from "@astryxdesign/core/Toast";
-import { Tooltip } from "@astryxdesign/core/Tooltip";
-import { VStack } from "@astryxdesign/core/VStack";
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useCourse } from "@/components/admin/CourseContext";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ChevronRightIcon, SearchIcon } from "@/components/icons";
 import { EnvBadge } from "@/components/StatusBadge";
+import { useToast } from "@/components/Toast";
 import { ApiError, courses } from "@/lib/api";
 import {
   CLASSIFICATION_LABEL,
@@ -27,6 +17,8 @@ import {
   TRIGGER_LABEL,
 } from "@/lib/display";
 import type { ErrorCount, StudentRow } from "@/lib/types";
+
+const MENU_HEIGHT = 190;
 
 type Pending = { kind: "restart" | "reset-pin" | "remove"; student: StudentRow };
 
@@ -51,76 +43,107 @@ const CONFIRM: Record<Pending["kind"], { title: string; description: (n: string)
 function RepeatedErrors({ errors, note }: { errors: ErrorCount[]; note: string }) {
   if (errors.length === 0) return null;
   return (
-    <Card padding={4}>
-      <VStack gap={2}>
-        <HStack gap={2} vAlign="center" wrap="wrap">
-          <Text weight="semibold">반복 오류</Text>
-          <Text type="supporting">{note}</Text>
-        </HStack>
-        {errors.map((e) => (
-          <HStack key={e.errorType} gap={3} vAlign="center" wrap="wrap">
-            <Text type="code" weight="semibold">
-              {e.errorType}
-            </Text>
-            <Text weight="medium">{e.count}건</Text>
-            <Text type="supporting">{e.students.join(", ")}</Text>
-          </HStack>
-        ))}
-      </VStack>
-    </Card>
-  );
-}
-
-function PinCell({ student }: { student: StudentRow }) {
-  return <Text color={student.pinSet ? "primary" : "secondary"}>{student.pinSet ? "설정됨" : "미설정"}</Text>;
-}
-
-function EnvCell({ student }: { student: StudentRow }) {
-  const details = [
-    ...student.issues,
-    ...student.extras.map((name) => `수업 스펙에 없는 패키지: ${name}`),
-  ];
-  const localLabel = LOCAL_LABEL[student.local.status];
-  const badge = <EnvBadge status={student.envStatus} />;
-  return (
-    <VStack gap={1} hAlign="start">
-      {details.length > 0 ? <Tooltip content={details.join("\n")}>{badge}</Tooltip> : badge}
-      {localLabel && <Text type="supporting">{localLabel}</Text>}
-    </VStack>
-  );
-}
-
-function ConnectionCell({ student }: { student: StudentRow }) {
-  const rows = [
-    {
-      on: student.containerRunning,
-      label: student.containerRunning ? "컨테이너 실행 중" : "컨테이너 중지됨",
-    },
-    { on: student.ideConnected, label: student.ideConnected ? "IDE 접속 중" : "IDE 미접속" },
-  ];
-  return (
-    <VStack gap={0.5}>
-      {rows.map((r) => (
-        <HStack key={r.label} gap={1.5} vAlign="center">
-          <StatusDot variant={r.on ? "success" : "neutral"} label={r.label} />
-          <Text type="supporting" color="primary">{r.label}</Text>
-        </HStack>
+    <div className="card card--tight repeat">
+      <b>반복 오류</b> <span>· {note}</span>
+      {errors.map((e) => (
+        <div key={e.errorType}>
+          <code>{e.errorType}</code>
+          {e.count}건 <span>· {e.students.join(", ")}</span>
+        </div>
       ))}
-    </VStack>
+    </div>
+  );
+}
+
+function StudentMenu({
+  student,
+  isOpenCourse,
+  onResolve,
+  onPick,
+}: {
+  student: StudentRow;
+  isOpenCourse: boolean;
+  onResolve: () => void;
+  onPick: (kind: Pending["kind"]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [opensUp, setOpensUp] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  function toggle() {
+    // 화면 아래쪽 행은 메뉴가 잘리지 않게 위로 연다.
+    const bottom = root.current?.getBoundingClientRect().bottom ?? 0;
+    setOpensUp(window.innerHeight - bottom < MENU_HEIGHT);
+    setOpen(!open);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pick = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <div className="menu" ref={root}>
+      <button
+        type="button"
+        aria-label={`${student.name} 관리 메뉴`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className={opensUp ? "menu-list menu-list--up" : "menu-list"} role="menu">
+          {student.needsHelp && (
+            <>
+              <button type="button" role="menuitem" onClick={pick(onResolve)}>
+                도움 처리 완료
+              </button>
+              <hr />
+            </>
+          )}
+          <button type="button" role="menuitem" disabled={!isOpenCourse} onClick={pick(() => onPick("restart"))}>
+            재시작
+          </button>
+          <button type="button" role="menuitem" onClick={pick(() => onPick("reset-pin"))}>
+            PIN 초기화
+          </button>
+          <hr />
+          <button type="button" role="menuitem" className="is-danger" onClick={pick(() => onPick("remove"))}>
+            제거
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
 function TextList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <VStack gap={0.5}>
-      <Text type="supporting" weight="semibold">
-        {title}
-      </Text>
+    <section>
+      <h4>{title}</h4>
       {items.map((item, i) => (
-        <Text key={i}>{`· ${item}`}</Text>
+        <div key={i}>· {item}</div>
       ))}
-    </VStack>
+    </section>
   );
 }
 
@@ -128,167 +151,136 @@ function TextList({ title, items }: { title: string; items: string[] }) {
 function StudentDetail({ student }: { student: StudentRow }) {
   const actions = student.recentActions.slice(0, 5);
   const seen = formatTime(student.lastSeenAt);
-  const local = student.local;
+  const { local } = student;
   const pc = [local.os, local.arch, local.python].filter(Boolean).join(" / ");
   const localLabel = LOCAL_LABEL[local.status];
   return (
-    <VStack gap={4} paddingBlock={3} paddingInline={4}>
-      <HStack gap={4} wrap="wrap">
-        <Text type="supporting">{seen ? `마지막 확인 ${seen}` : "마지막 확인 없음"}</Text>
-        {student.startupMillis != null && <Text type="supporting">{formatStartup(student.startupMillis)}</Text>}
-      </HStack>
+    <div className="detail-grid">
+      <div className="detail-meta">
+        {seen ? `마지막 확인 ${seen}` : "마지막 확인 없음"}
+        {student.startupMillis != null && ` · ${formatStartup(student.startupMillis)}`}
+      </div>
+      <div>
+        <h4>에이전트 조치 (최근 {actions.length}건)</h4>
+        {actions.length === 0 && <span className="muted">조치 내역 없음</span>}
+        {actions.map((a, i) => (
+          <div key={`${a.at}-${i}`} className="action">
+            <small>
+              {[
+                formatTime(a.at),
+                TRIGGER_LABEL[a.trigger] ?? a.trigger,
+                a.classification ? (CLASSIFICATION_LABEL[a.classification] ?? a.classification) : null,
+                a.outcome ? (OUTCOME_LABEL[a.outcome] ?? a.outcome) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </small>
+            {a.tools.length > 0 && <code>도구: {a.tools.join(" → ")}</code>}
+            {a.summary && <div>{a.summary}</div>}
+          </div>
+        ))}
+      </div>
+      <div>
+        <TextList title="환경 불일치" items={student.issues} />
+        <TextList title="추가 패키지 경고" items={student.extras} />
+        {(localLabel || pc || local.failed.length > 0) && (
+          <section>
+            <h4>내 PC</h4>
+            {localLabel}
+            {localLabel && pc && " · "}
+            {pc && <code>{pc}</code>}
+            {local.failed.length > 0 && <div>실패한 항목: {local.failed.join(", ")}</div>}
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      <VStack gap={1}>
-        <Text weight="semibold">에이전트 조치 (최근 {actions.length}건)</Text>
-        {actions.length === 0 && <Text color="secondary">조치 내역 없음</Text>}
-        {actions.map((a, i) => {
-          const head = [
-            formatTime(a.at),
-            TRIGGER_LABEL[a.trigger] ?? a.trigger,
-            a.classification ? (CLASSIFICATION_LABEL[a.classification] ?? a.classification) : null,
-            a.outcome ? (OUTCOME_LABEL[a.outcome] ?? a.outcome) : null,
-          ]
-            .filter(Boolean)
-            .join(" · ");
-          return (
-            <VStack key={`${a.at}-${i}`} gap={0.5}>
-              <Text type="supporting">{head}</Text>
-              {a.tools.length > 0 && <Text type="code">{`도구: ${a.tools.join(" → ")}`}</Text>}
-              {a.summary && <Text>{a.summary}</Text>}
-            </VStack>
-          );
-        })}
-      </VStack>
+function StudentRows({
+  student,
+  isOpenCourse,
+  onResolve,
+  onPick,
+}: {
+  student: StudentRow;
+  isOpenCourse: boolean;
+  onResolve: () => void;
+  onPick: (kind: Pending["kind"]) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const report = latestReport(student);
+  const envDetails = [...student.issues, ...student.extras.map((name) => `수업 스펙에 없는 패키지: ${name}`)];
+  const localLabel = LOCAL_LABEL[student.local.status];
 
-      <TextList title="환경 불일치" items={student.issues} />
-      <TextList title="추가 패키지 경고" items={student.extras} />
-
-      {(localLabel || pc || local.failed.length > 0) && (
-        <VStack gap={1}>
-          <Text weight="semibold">내 PC</Text>
-          {localLabel && <Text>{localLabel}</Text>}
-          {pc && <Text type="code">{pc}</Text>}
-          <TextList title="실패한 항목" items={local.failed} />
-        </VStack>
+  return (
+    <Fragment>
+      <tr className={student.needsHelp ? "needs-help" : undefined}>
+        <td>
+          <button
+            type="button"
+            className="chev"
+            aria-label={`${student.name} 상세 ${expanded ? "접기" : "펼치기"}`}
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <ChevronRightIcon />
+          </button>
+        </td>
+        <td className="sname">
+          {student.name}
+          {student.needsHelp && <span className="help-tag">도움 필요</span>}
+        </td>
+        <td>
+          <div className={student.containerRunning ? "conn is-on" : "conn"}>
+            {student.containerRunning ? "컨테이너 실행 중" : "컨테이너 중지됨"}
+          </div>
+          <div className={student.ideConnected ? "conn is-on" : "conn"}>
+            {student.ideConnected ? "IDE 접속 중" : "IDE 미접속"}
+          </div>
+        </td>
+        <td>
+          <EnvBadge status={student.envStatus} title={envDetails.join("\n") || undefined} />
+          {localLabel && <div className="row-sub">{localLabel}</div>}
+        </td>
+        <td className={student.pinSet ? undefined : "muted"}>{student.pinSet ? "설정됨" : "미설정"}</td>
+        <td>
+          {report.text ?? <span className="muted">조치 내역 없음</span>}
+          {report.at && <span className="row-time">{formatTime(report.at)}</span>}
+        </td>
+        <td className="right">
+          <StudentMenu student={student} isOpenCourse={isOpenCourse} onResolve={onResolve} onPick={onPick} />
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="detail">
+          <td />
+          <td colSpan={6}>
+            <StudentDetail student={student} />
+          </td>
+        </tr>
       )}
-    </VStack>
+    </Fragment>
   );
 }
 
 export function StudentsTab() {
   const { courseId, dashboard, refresh } = useCourse();
   const showToast = useToast();
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<"all" | "help">("all");
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [acting, setActing] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const helpCount = dashboard.students.filter((s) => s.needsHelp).length;
   const rows = useMemo(() => {
     const q = query.trim();
-    return dashboard.students.filter(
-      (s) => (filter === "all" || s.needsHelp) && (!q || s.name.includes(q)),
-    );
+    return dashboard.students
+      .filter((s) => (filter === "all" || s.needsHelp) && (!q || s.name.includes(q)))
+      .sort((a, b) => Number(b.needsHelp) - Number(a.needsHelp));
   }, [dashboard.students, filter, query]);
 
-  // 펼침 상태는 여기서 들고 있어 3초마다 새로 받아도 닫히지 않는다.
-  const expansion = useTableRowExpansion<StudentRow>({
-    expandedKeys: expanded,
-    onToggle: (key) =>
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        if (!next.delete(key)) next.add(key);
-        return next;
-      }),
-    getRowKey: (s) => String(s.sessionId),
-    getRowLabel: (s) => s.name,
-    renderExpanded: (s) => <StudentDetail student={s} />,
-  });
-
-  const isOpen = dashboard.course.status === "READY";
-
-  const columns: TableColumn<StudentRow>[] = [
-    {
-      key: "name",
-      header: "이름",
-      width: pixel(180),
-      renderCell: (student) => (
-        <HStack gap={2} vAlign="center" wrap="wrap" data-needs-help={student.needsHelp || undefined}>
-          <Text weight="semibold">{student.name}</Text>
-          {student.needsHelp && <Badge variant="error" label="도움 필요" />}
-        </HStack>
-      ),
-    },
-    {
-      key: "connection",
-      header: "접속 상태",
-      width: pixel(190),
-      renderCell: (student) => <ConnectionCell student={student} />,
-    },
-    {
-      key: "env",
-      header: "환경 상태",
-      width: pixel(130),
-      renderCell: (student) => <EnvCell student={student} />,
-    },
-    {
-      key: "pin",
-      header: "PIN",
-      width: pixel(100),
-      renderCell: (student) => <PinCell student={student} />,
-    },
-    {
-      key: "report",
-      header: "AI 조치 보고",
-      width: proportional(1),
-      renderCell: (student) => {
-        const report = latestReport(student);
-        return (
-          <HStack gap={3} vAlign="center">
-            <Text color={report.text ? "primary" : "secondary"}>{report.text ?? "조치 내역 없음"}</Text>
-            {report.at && (
-              <Text type="supporting" textWrap="nowrap">
-                {formatTime(report.at)}
-              </Text>
-            )}
-          </HStack>
-        );
-      },
-    },
-    {
-      key: "actions",
-      header: "관리",
-      width: pixel(72),
-      renderCell: (student) => (
-        <MoreMenu
-          label={`${student.name} 관리 메뉴`}
-          alignment="end"
-          size="sm"
-          items={[
-            ...(student.needsHelp
-              ? [
-                  { label: "도움 처리 완료", onClick: () => void resolve(student) },
-                  { type: "divider" as const },
-                ]
-              : []),
-            {
-              label: "재시작",
-              isDisabled: !isOpen,
-              onClick: () => setPending({ kind: "restart", student }),
-            },
-            { label: "PIN 초기화", onClick: () => setPending({ kind: "reset-pin", student }) },
-            { type: "divider" as const },
-            {
-              label: "제거",
-              variant: "destructive" as const,
-              onClick: () => setPending({ kind: "remove", student }),
-            },
-          ]}
-        />
-      ),
-    },
-  ];
+  const isOpenCourse = dashboard.course.status === "READY";
 
   async function resolve(student: StudentRow) {
     try {
@@ -335,62 +327,83 @@ export function StudentsTab() {
     }
   }
 
+  if (dashboard.students.length === 0) {
+    return (
+      <div className="card state" style={{ marginTop: 18 }}>
+        <b>아직 입장한 학생이 없습니다</b>
+      </div>
+    );
+  }
+
   return (
-    <VStack gap={6}>
+    <>
       <RepeatedErrors errors={dashboard.repeatedErrors} note={dashboard.repeatedErrorsNote} />
 
-      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
-        <SegmentedControl label="필터" value={filter} onChange={setFilter}>
-          <SegmentedControlItem value="all" label={`전체 ${dashboard.students.length}`} />
-          <SegmentedControlItem value="help" label={`도움 필요 ${helpCount}`} />
-        </SegmentedControl>
-        <TextInput
-          label="학생 검색"
-          isLabelHidden
-          type="search"
-          startIcon="search"
-          placeholder="이름 검색"
-          value={query}
-          onChange={setQuery}
-          width={320}
-        />
-      </HStack>
-
-      <div className="table-scroll">
-        <Table
-          aria-label="학생 목록"
-          density="spacious"
-          idKey="sessionId"
-          data={rows}
-          columns={columns}
-          plugins={{ expansion }}
-          emptyState={
-            <VStack paddingBlock={6} paddingInline={4} hAlign="center">
-              <Text color="secondary">
-                {dashboard.students.length === 0
-                  ? "아직 입장한 학생이 없습니다."
-                  : "조건에 맞는 학생이 없습니다."}
-              </Text>
-            </VStack>
-          }
-        />
+      <div className="tools">
+        <div className="seg" role="group" aria-label="필터">
+          <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
+            전체 <span>{dashboard.students.length}</span>
+          </button>
+          <button type="button" aria-pressed={filter === "help"} onClick={() => setFilter("help")}>
+            도움 필요 <span>{helpCount}</span>
+          </button>
+        </div>
+        <label className="search">
+          <SearchIcon />
+          <input
+            type="search"
+            placeholder="이름 검색"
+            aria-label="이름 검색"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
       </div>
 
+      {rows.length === 0 ? (
+        <div className="card state">
+          <b>조건에 맞는 학생이 없습니다</b>
+        </div>
+      ) : (
+        <div className="card card--tight">
+          <table className="students">
+            <thead>
+              <tr>
+                <th aria-label="상세" />
+                <th>이름</th>
+                <th>접속 상태</th>
+                <th>환경 상태</th>
+                <th>PIN</th>
+                <th>AI 조치 보고</th>
+                <th className="right">관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((student) => (
+                <StudentRows
+                  key={student.sessionId}
+                  student={student}
+                  isOpenCourse={isOpenCourse}
+                  onResolve={() => void resolve(student)}
+                  onPick={(kind) => setPending({ kind, student })}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {pending && (
-        <AlertDialog
-          isOpen
-          onOpenChange={(open) => {
-            if (!open && !acting) setPending(null);
-          }}
+        <ConfirmDialog
           title={CONFIRM[pending.kind].title}
           description={CONFIRM[pending.kind].description(pending.student.name)}
           actionLabel={CONFIRM[pending.kind].action}
-          actionVariant={pending.kind === "remove" ? "destructive" : "primary"}
-          cancelLabel="취소"
-          isActionLoading={acting}
+          isDanger={pending.kind === "remove"}
+          isBusy={acting}
           onAction={confirm}
+          onCancel={() => setPending(null)}
         />
       )}
-    </VStack>
+    </>
   );
 }

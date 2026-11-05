@@ -149,9 +149,6 @@ export const student = {
     request<{ resumed: boolean }>("POST", "/api/join", { body: input }),
   me: () => request<Me>("GET", "/api/me"),
   logout: () => request<void>("POST", "/api/me/logout"),
-  help: (errorText: string | null) =>
-    request<{ helpId: number }>("POST", "/api/me/help", { body: { errorText } }),
-  escalate: () => request<void>("POST", "/api/me/escalate"),
   // 터미널은 쿠키가 없어 10분짜리 다운로드 코드가 든 주소를 받는다. 부를 때마다 새로 만든다.
   localLink: (os: Os) => request<InstallInfo>("POST", `/api/me/local/link?os=${os}`),
   diagnostics: (os: Os, text: string) =>

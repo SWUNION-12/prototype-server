@@ -1,113 +1,197 @@
 "use client";
 
-import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { Center } from "@astryxdesign/core/Center";
-import { ClickableCard } from "@astryxdesign/core/ClickableCard";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { Grid, GridSpan } from "@astryxdesign/core/Grid";
-import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Icon } from "@astryxdesign/core/Icon";
-import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
-import { Spinner } from "@astryxdesign/core/Spinner";
-import { Text } from "@astryxdesign/core/Text";
-import { VStack } from "@astryxdesign/core/VStack";
-import { AppHeader } from "@/components/AppHeader";
-import { FolderIcon, PlusIcon } from "@/components/icons";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
+import { InstructorHeader } from "@/components/admin/InstructorHeader";
+import { Notice } from "@/components/Notice";
 import { CourseBadge } from "@/components/StatusBadge";
-import { ApiError, courses } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { ApiError, auth, courses } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { studentCountLabel } from "@/lib/display";
 import type { Course } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
-function CourseCard({ course }: { course: Course }) {
+const noSubscribe = () => () => {};
+const useHost = () =>
+  useSyncExternalStore(
+    noSubscribe,
+    () => window.location.host,
+    () => "",
+  );
+
+const courseUrl = (id: number) => `/instructor/course?id=${id}`;
+
+function CourseActions({ course }: { course: Course }) {
+  if (course.status === "FAILED") {
+    return (
+      <div className="btns">
+        <Link className="btn btn--line" href={courseUrl(course.id)}>
+          로그 보기
+        </Link>
+        <Link className="btn btn--danger-line" href={`${courseUrl(course.id)}&tab=settings`}>
+          수업 삭제
+        </Link>
+      </div>
+    );
+  }
+  if (course.status === "LOCKING" || course.status === "BUILDING") {
+    return (
+      <div className="btns">
+        <button type="button" className="btn" disabled>
+          열기
+        </button>
+      </div>
+    );
+  }
   return (
-    <ClickableCard
-      label={`${course.name} 열기`}
-      href={`/instructor/course?id=${course.id}`}
-      padding={6}
-      height="100%"
-    >
-      <VStack gap={4}>
-        <HStack gap={2} vAlign="center">
-          <Text type="large" weight="semibold">
-            {course.name}
-          </Text>
-          <Text type="supporting">{studentCountLabel(course.studentCount)}</Text>
-        </HStack>
-        <MetadataList label={{ position: "start", width: 96 }}>
-          <MetadataListItem label="Python">
-            <Text type="code">{course.pythonVersion}</Text>
-          </MetadataListItem>
-          <MetadataListItem label="환경 상태">
-            <CourseBadge status={course.status} />
-          </MetadataListItem>
-        </MetadataList>
-        {course.status === "FAILED" && course.errorSummary && (
-          <VStack gap={2}>
-            <Text type="supporting">오류 요약</Text>
-            <pre className="error-summary">{course.errorSummary}</pre>
-          </VStack>
-        )}
-      </VStack>
-    </ClickableCard>
+    <div className="btns">
+      <Link className="btn btn--blue" href={courseUrl(course.id)}>
+        열기
+      </Link>
+    </div>
   );
 }
 
-export default function InstructorHomePage() {
+function CourseCard({ course }: { course: Course }) {
+  const isOff = course.status === "LOCKING" || course.status === "BUILDING" || course.status === "FAILED";
+  return (
+    <article className={isOff ? "card class-card is-off" : "card class-card"}>
+      <div>
+        <h2>
+          {course.name}
+          <CourseBadge status={course.status} />
+        </h2>
+        <p>
+          Python {course.pythonVersion}
+          {!isOff && ` · ${studentCountLabel(course.studentCount)} 접속`}
+        </p>
+        {course.status === "FAILED" && course.errorSummary && <p className="errline">{course.errorSummary}</p>}
+      </div>
+      <div>
+        {course.entryCode ? (
+          <>
+            <div className="cap">수업 코드</div>
+            <div className="code">{course.entryCode}</div>
+          </>
+        ) : (
+          course.status !== "FAILED" && (
+            <>
+              <div className="cap">수업 코드</div>
+              <div className="code-none">준비되면 생겨요</div>
+            </>
+          )
+        )}
+      </div>
+      <CourseActions course={course} />
+    </article>
+  );
+}
+
+function HomeBody() {
+  const params = useSearchParams();
+  const showToast = useToast();
+  const isEndedTab = params.get("tab") === "ended";
+  const query = (params.get("q") ?? "").trim().toLowerCase();
   const { data: list, error } = usePoll(courses.list, 3000, (e) => e instanceof ApiError && e.status === 401);
 
+  const inTab = (list ?? []).filter((c) => (c.status === "ENDED") === isEndedTab);
+  const shown = inTab.filter((c) => !query || c.name.toLowerCase().includes(query));
+  const openCount = (list ?? []).filter((c) => c.status !== "ENDED").length;
+  const host = useHost();
+  const [username, setUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    auth
+      .me()
+      .then((me) => {
+        if (live) setUsername(me.username);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function copyJoinUrl() {
+    const url = `${window.location.origin}/join`;
+    const ok = await copyText(url);
+    showToast(
+      ok
+        ? { body: "학생 입장 주소를 복사했습니다." }
+        : { body: `복사하지 못했습니다. 직접 전달해 주세요: ${url}`, type: "error" },
+    );
+  }
+
   return (
-    <VStack className="app-root">
-      <AppHeader />
-      <VStack as="main" className="page" gap={6}>
-        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={4}>
-          <Heading level={1}>환영합니다</Heading>
-          <Button
-            variant="primary"
-            label="수업 만들기"
-            href="/instructor/new"
-            icon={<Icon icon={PlusIcon} size="sm" />}
-          />
-        </HStack>
-
-        {error instanceof ApiError && error.status === 401 && list ? (
-          <Banner status="error" title={error.message} />
-        ) : null}
-
+    <>
+      <InstructorHeader
+        actions={
+          <Link className="btn btn--sm btn--blue" href="/instructor/new">
+            새 수업 만들기
+          </Link>
+        }
+      />
+      <div className="band">
+        <div className="wrap band-inner">
+          <div>
+            <h1>내 수업</h1>
+            <div className="sub">{list ? `${username ? `${username} 선생님 · ` : ""}진행 중 ${openCount}개` : " "}</div>
+          </div>
+          <div className="joinurl">
+            학생 입장 주소 <span className="mono">{host && `${host}/join`}</span>
+            <button type="button" className="btn btn--pill" onClick={copyJoinUrl}>
+              주소 복사
+            </button>
+          </div>
+        </div>
+      </div>
+      <main className="wrap">
+        <div className="listhead">최근에 만든 순서</div>
         {error != null && !list ? (
-          <Banner
+          <Notice
             status="error"
             title={error instanceof ApiError ? error.message : "수업 목록을 불러오지 못했습니다."}
           />
         ) : list === null ? (
-          <Card>
-            <Center minHeight={432}>
-              <Spinner label="불러오는 중" />
-            </Center>
-          </Card>
-        ) : list.length === 0 ? (
-          <Card>
-            <Center minHeight={432}>
-              <EmptyState
-                icon={<Icon icon={FolderIcon} size="lg" color="secondary" />}
-                title="현재 만들어진 수업이 없습니다."
-                headingLevel={2}
-              />
-            </Center>
-          </Card>
+          <div className="state">
+            <span className="spinner" role="status" aria-label="불러오는 중" />
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="card state">
+            {query ? (
+              <b>검색 결과가 없습니다</b>
+            ) : isEndedTab ? (
+              <b>종료된 수업이 없습니다</b>
+            ) : (
+              <>
+                <b>현재 만들어진 수업이 없습니다</b>
+                <Link className="btn btn--blue" href="/instructor/new">
+                  새 수업 만들기
+                </Link>
+              </>
+            )}
+          </div>
         ) : (
-          <Grid columns={{ minWidth: 320, max: 2 }} gap={4} align="stretch">
-            {list.map((course) => (
-              <GridSpan key={course.id} rows={course.status === "FAILED" ? 2 : undefined}>
-                <CourseCard course={course} />
-              </GridSpan>
+          <div className="class-list">
+            {shown.map((course) => (
+              <CourseCard key={course.id} course={course} />
             ))}
-          </Grid>
+          </div>
         )}
-      </VStack>
-    </VStack>
+      </main>
+    </>
+  );
+}
+
+export default function InstructorHomePage() {
+  return (
+    <div className="page page--nav page--bottom page--wave">
+      <Suspense>
+        <HomeBody />
+      </Suspense>
+    </div>
   );
 }

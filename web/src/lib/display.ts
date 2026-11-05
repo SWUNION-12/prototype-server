@@ -13,9 +13,9 @@ export const ENV_BADGE: Record<EnvStatus, { label: string; variant: BadgeVariant
 
 export const COURSE_BADGE: Record<CourseStatus, { label: string; variant: BadgeVariant }> = {
   READY: { label: "정상", variant: "success" },
-  FAILED: { label: "오류", variant: "error" },
-  LOCKING: { label: "준비 중", variant: "info" },
-  BUILDING: { label: "준비 중", variant: "info" },
+  FAILED: { label: "만들기 실패", variant: "error" },
+  LOCKING: { label: "준비 중", variant: "warning" },
+  BUILDING: { label: "준비 중", variant: "warning" },
   ENDED: { label: "종료됨", variant: "neutral" },
 };
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { Center } from "@astryxdesign/core/Center";
-import { Link } from "@astryxdesign/core/Link";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -11,10 +10,9 @@ export default function RootPage() {
   useEffect(() => {
     router.replace("/join");
   }, [router]);
-  // 이동 전(또는 서버 리다이렉트 없이 연 경우)에 빈 화면이 되지 않게 링크를 둔다.
   return (
-    <Center className="app-root" padding={4}>
+    <div className="state state--full">
       <Link href="/join">수업 코드로 입장하기</Link>
-    </Center>
+    </div>
   );
 }

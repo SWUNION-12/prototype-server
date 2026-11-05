@@ -1,22 +1,11 @@
 "use client";
 
-import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
-import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
-import { Step, Stepper } from "@astryxdesign/core/Stepper";
-import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { VStack } from "@astryxdesign/core/VStack";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { AppHeader } from "@/components/AppHeader";
-import { PlusIcon } from "@/components/icons";
-import { ApiError, courses } from "@/lib/api";
+import { Suspense, useMemo, useState } from "react";
+import { InstructorHeader } from "@/components/admin/InstructorHeader";
+import { CloseIcon, SearchIcon } from "@/components/icons";
+import { Notice } from "@/components/Notice";
+import { ApiError, courses, INSTRUCTOR_HOME } from "@/lib/api";
 import {
   DEFAULT_PYTHON,
   isValidPackage,
@@ -26,20 +15,33 @@ import {
   SUGGESTED_PACKAGES,
 } from "@/lib/packages";
 
+const STEPS = ["1. 수업명", "2. Python 버전", "3. 의존성"];
+
+function Summary({ name, python, packages }: { name: string; python: string; packages: string[] }) {
+  return (
+    <dl className="summary">
+      <dt>수업명</dt>
+      <dd className={name ? undefined : "is-empty"}>{name || "입력 전"}</dd>
+      <dt>Python 버전</dt>
+      <dd className="mono">{python}</dd>
+      <dt>의존성 {packages.length}개</dt>
+      <dd className={packages.length ? "mono" : "mono is-empty"}>{packages.join(", ") || "없음"}</dd>
+    </dl>
+  );
+}
+
 function PythonStep({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Card padding={0}>
-      <HStack hAlign="between" vAlign="center" gap={3} paddingBlock={4} paddingInline={6}>
-        <Text weight="medium" id="py-label">
-          Python 버전
-        </Text>
-        <Text type="supporting">
-          선택: <Text type="code">{value}</Text>
-        </Text>
-      </HStack>
-      <div className="version-list" role="radiogroup" aria-labelledby="py-label">
+    <div className="card py-card">
+      <div className="py-head">
+        <b id="py-label">Python 버전</b>
+        <span>
+          선택: <span className="mono">{value}</span>
+        </span>
+      </div>
+      <div role="radiogroup" aria-labelledby="py-label">
         {PYTHON_VERSIONS.map((version) => (
-          <label key={version} className="version-row" data-selected={version === value}>
+          <label key={version} className={version === value ? "py-row is-on" : "py-row"}>
             <input
               type="radio"
               name="python"
@@ -51,30 +53,16 @@ function PythonStep({ value, onChange }: { value: string; onChange: (v: string) 
           </label>
         ))}
       </div>
-    </Card>
+    </div>
   );
 }
 
-function DependencyStep({
-  selected,
-  onChange,
-}: {
-  selected: string[];
-  onChange: (next: string[]) => void;
-}) {
+function DependencyStep({ selected, onChange }: { selected: string[]; onChange: (next: string[]) => void }) {
   const [query, setQuery] = useState("");
+  const [isInvalid, setIsInvalid] = useState(false);
   const typed = query.trim();
   const selectedNames = useMemo(() => new Set(selected.map(packageName)), [selected]);
-
-  const suggestions = SUGGESTED_PACKAGES.filter(
-    (name) => !typed || name.includes(packageName(typed)),
-  );
-  const canAddTyped =
-    typed !== "" &&
-    isValidPackage(typed) &&
-    !selected.includes(typed) &&
-    !(SUGGESTED_PACKAGES.includes(typed) && selectedNames.has(packageName(typed)));
-  const typedIsInvalid = typed !== "" && !isValidPackage(typed) && suggestions.length === 0;
+  const suggestions = SUGGESTED_PACKAGES.filter((name) => !typed || name.includes(packageName(typed)));
 
   function toggle(name: string) {
     onChange(
@@ -85,87 +73,77 @@ function DependencyStep({
   }
 
   function addTyped() {
-    if (!canAddTyped || selected.length >= MAX_PACKAGES) return;
+    if (!typed) return;
+    if (!isValidPackage(typed)) {
+      setIsInvalid(true);
+      return;
+    }
+    if (selected.length >= MAX_PACKAGES && !selectedNames.has(packageName(typed))) return;
     // 같은 패키지를 버전만 바꿔 넣으면 앞의 것을 대체한다. 서버는 중복을 거부한다.
     onChange([...selected.filter((line) => packageName(line) !== packageName(typed)), typed]);
     setQuery("");
   }
 
   return (
-    <Card padding={0}>
-      <div className="deps">
-        <VStack className="deps-main" gap={3}>
-          <TextInput
-            label="라이브러리"
-            type="search"
-            startIcon="search"
+    <div className="card split">
+      <div className="split-main">
+        <label className="label" htmlFor="lib-search">
+          라이브러리
+        </label>
+        <div className="search lib-search">
+          <SearchIcon />
+          <input
+            id="lib-search"
             placeholder="라이브러리 검색 또는 numpy==2.1.0 입력"
             value={query}
-            onChange={setQuery}
-            onEnter={addTyped}
-            status={
-              typedIsInvalid
-                ? { type: "error", message: "이름, 이름==버전, 이름>=버전 형식으로 입력해 주세요." }
-                : undefined
-            }
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setIsInvalid(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addTyped();
+              }
+            }}
           />
-          <VStack gap={0} className="deps-list">
-            {suggestions.map((name) => (
-              <HStack key={name} paddingBlock={2} paddingInline={2}>
-                <CheckboxInput
-                  label={name}
-                  value={selectedNames.has(packageName(name))}
-                  onChange={() => toggle(name)}
-                />
-              </HStack>
-            ))}
-            {canAddTyped && !suggestions.includes(typed) && (
-              <HStack paddingBlock={2}>
-                <Button
-                  variant="ghost"
-                  label={`"${typed}" 추가`}
-                  icon={<Icon icon={PlusIcon} size="sm" />}
-                  onClick={addTyped}
-                />
-              </HStack>
-            )}
-          </VStack>
-        </VStack>
-        <VStack className="deps-side" gap={3}>
-          <Text weight="medium">
-            선택된 의존성 <Text color="secondary">{selected.length}</Text>
-          </Text>
-          {selected.length === 0 ? (
-            <Text type="supporting">선택된 라이브러리가 없습니다.</Text>
-          ) : (
-            <VStack as="ul" gap={1} paddingInlineStart={0} style={{ listStyle: "none", margin: 0 }}>
-              {selected.map((line) => (
-                <li key={line}>
-                  <Card padding={1}>
-                    <HStack hAlign="between" vAlign="center" gap={2} paddingInlineStart={2}>
-                      <Text type="code" wordBreak="break-all">
-                        {line}
-                      </Text>
-                      <IconButton
-                        variant="ghost"
-                        size="sm"
-                        label={`${line} 제거`}
-                        icon={<Icon icon="close" size="sm" />}
-                        onClick={() => onChange(selected.filter((x) => x !== line))}
-                      />
-                    </HStack>
-                  </Card>
-                </li>
-              ))}
-            </VStack>
-          )}
-        </VStack>
+        </div>
+        {isInvalid && <div className="field-error">이름, 이름==버전, 이름&gt;=버전 형식으로 입력해 주세요.</div>}
+        <div className="lib-list">
+          {suggestions.map((name) => (
+            <label key={name} className="lib-row">
+              <input
+                type="checkbox"
+                checked={selectedNames.has(packageName(name))}
+                onChange={() => toggle(name)}
+              />
+              {name}
+            </label>
+          ))}
+        </div>
       </div>
-    </Card>
+      <div className="split-side">
+        <div className="label">
+          선택된 의존성 <span>{selected.length}</span>
+        </div>
+        {selected.map((line) => (
+          <div key={line} className="dep">
+            {line}
+            <button
+              type="button"
+              aria-label={`${line} 빼기`}
+              onClick={() => onChange(selected.filter((item) => item !== line))}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-export default function NewProjectPage() {
+function NewCourse() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -174,81 +152,110 @@ export default function NewProjectPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const trimmed = name.trim();
+  const nameTooLong = trimmed.length > 100;
+  const canLeaveName = trimmed !== "" && !nameTooLong;
+
   async function create() {
     setBusy(true);
     setError(null);
     try {
-      const course = await courses.create({
-        name: name.trim(),
-        pythonVersion: python,
-        packages: packages.join("\n"),
-      });
+      const course = await courses.create({ name: trimmed, pythonVersion: python, packages: packages.join("\n") });
       router.push(`/instructor/course?id=${course.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "수업을 만들지 못했습니다.");
+      setError(err instanceof ApiError ? err.message : "프로젝트를 만들지 못했습니다.");
       setBusy(false);
     }
   }
 
-  const trimmed = name.trim();
-  const nameTooLong = trimmed.length > 100;
-
   return (
-    <VStack className="app-root">
-      <AppHeader />
-      <VStack as="main" className="page page--narrow" gap={8}>
-        <Heading level={1}>새 수업 설정</Heading>
-        <Stepper activeStep={step} label="진행 단계">
-          <Step step={0} label="1. 수업명" indicator="none" />
-          <Step step={1} label="2. Python 버전" indicator="none" />
-          <Step step={2} label="3. 의존성" indicator="none" />
-        </Stepper>
+    <>
+      <InstructorHeader />
+      <main className="form">
+        <h1 className="pagetitle">프로젝트 설정</h1>
+        <ol className="steps" aria-label="진행 단계">
+          {STEPS.map((label, index) => (
+            <li
+              key={label}
+              className={index < step ? "is-done" : index === step ? "is-active" : undefined}
+              aria-current={index === step ? "step" : undefined}
+            >
+              {label}
+            </li>
+          ))}
+        </ol>
 
         {step === 0 && (
-          <Card padding={8}>
-            <TextInput
-              label="수업명"
-              placeholder="예: 파이썬 기초"
-              value={name}
-              onChange={setName}
-              hasAutoFocus
-              onEnter={() => {
-                if (trimmed && !nameTooLong) setStep(1);
-              }}
-              status={nameTooLong ? { type: "error", message: "100자 이하로 입력해 주세요." } : undefined}
-            />
-          </Card>
+          <div className="card split">
+            <div className="split-main">
+              <label className="label" htmlFor="course-name">
+                수업명
+              </label>
+              <input
+                id="course-name"
+                className="field"
+                placeholder="예: 파이썬 기초"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canLeaveName) setStep(1);
+                }}
+              />
+              {nameTooLong && <div className="field-error">100자 이하로 입력해 주세요.</div>}
+            </div>
+            <div className="split-side">
+              <div className="label">설정 내용</div>
+              <Summary name={trimmed} python={python} packages={packages} />
+            </div>
+          </div>
         )}
         {step === 1 && <PythonStep value={python} onChange={setPython} />}
         {step === 2 && <DependencyStep selected={packages} onChange={setPackages} />}
 
-        {error && <Banner status="error" title="수업을 만들지 못했습니다" description={error} />}
+        {error && <Notice status="error" title="프로젝트를 만들지 못했습니다">{error}</Notice>}
 
-        <HStack hAlign="end" gap={2}>
-          {step === 0 ? (
-            <Button label="이전" href="/instructor" />
-          ) : (
-            <Button label="이전" onClick={() => setStep(step - 1)} isDisabled={busy} />
-          )}
+        <div className="form-foot">
+          <button
+            type="button"
+            className="btn"
+            disabled={busy}
+            onClick={() => (step === 0 ? router.push(INSTRUCTOR_HOME) : setStep(step - 1))}
+          >
+            이전
+          </button>
           {step < 2 ? (
-            <Button
-              variant="primary"
-              label="다음"
+            <button
+              type="button"
+              className="btn btn--blue"
+              disabled={step === 0 && !canLeaveName}
               onClick={() => setStep(step + 1)}
-              isDisabled={step === 0 && (!trimmed || nameTooLong)}
-            />
+            >
+              다음
+            </button>
           ) : (
-            <Button
-              variant="primary"
-              label="수업 만들기"
+            <button
+              type="button"
+              className="btn btn--blue"
+              disabled={busy || packages.length === 0}
+              title={packages.length === 0 ? "라이브러리를 한 개 이상 선택해 주세요." : undefined}
               onClick={create}
-              isLoading={busy}
-              isDisabled={packages.length === 0}
-              tooltip={packages.length === 0 ? "라이브러리를 한 개 이상 선택해 주세요." : undefined}
-            />
+            >
+              {busy ? "만드는 중" : "프로젝트 생성"}
+            </button>
           )}
-        </HStack>
-      </VStack>
-    </VStack>
+        </div>
+      </main>
+    </>
+  );
+}
+
+export default function NewCoursePage() {
+  return (
+    <div className="page page--nav page--corners">
+      <Suspense>
+        <NewCourse />
+      </Suspense>
+    </div>
   );
 }
