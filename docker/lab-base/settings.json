@@ -3,5 +3,8 @@
   "terminal.integrated.env.linux": {
     "PATH": "/opt/venv/bin:${env:PATH}"
   },
-  "workbench.startupEditor": "none"
+  "workbench.startupEditor": "none",
+  "security.workspace.trust.enabled": false,
+  "chat.disableAIFeatures": true,
+  "workbench.secondarySideBar.defaultVisibility": "hidden"
 }

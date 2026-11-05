@@ -38,4 +38,11 @@ RUN /usr/lib/code-server/lib/node /tmp/swunion-extension/pack-vsix.js \
     && code-server --list-extensions | grep -qx 'swunion.swunion-helper' \
     && rm -rf /tmp/swunion-extension /tmp/swunion-helper.vsix
 
+# 활동 막대에서 Source Control, Run and Debug, Extensions, Testing 아이콘을 숨긴다(설명은 스크립트 머리말).
+# code-server 설치 파일을 고치므로 root로 실행한다. 대상 파일이 없으면 빌드가 멈춘다. 맨 아래 층이라 위 층 캐시를 깨지 않는다.
+USER root
+COPY hide-activity-icons.sh /tmp/hide-activity-icons.sh
+RUN sh /tmp/hide-activity-icons.sh && rm -f /tmp/hide-activity-icons.sh
+USER coder
+
 CMD ["--bind-addr","0.0.0.0:8080","--auth","password","--disable-telemetry","--disable-update-check","/home/coder/project"]
