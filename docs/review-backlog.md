@@ -140,3 +140,14 @@
 ### Fix wave 1 re-review
 - LocalPanel 복사 안내 반복: 고침. 패널 위에서 한 번만 보인다.
 - CourseView `deleted` 상태 잔존: 고침. `key={courseId}`로 수업마다 새로 만든다.
+
+## AI 조치 보고 50자 (review)
+
+판정: 조건부 통과. 에이전트 summary/escalate reason, flagNeedsHelp 두 오버로드, LocalService, 웹 clamp는 요구대로다(코드 포인트 기준 50자, 서로게이트 안전, 거부 없이 줄임, 스키마 maxLength 50과 "50자" 안내). 아래 두 건은 화면에 새 이유가 안 보이는 실제 구멍이다.
+
+- [Important] src/main/java/com/swunion/lab/session/SessionRepository.java:82-92, SessionService.java:392 — `addNeedsHelpReason`("학생 호출", "작업 공간 유실")이 `기존 / 새 이유`로 덧붙여 50자를 넘는다. 기존 이유가 50자(…로 끝난 값)면 새 이유는 항상 웹 clamp에 잘려 강사가 학생 호출을 못 본다. 서버 저장값도 50자 규칙 밖이다 — 덧붙임 결과를 50자로 맞춘다: 새 이유를 고정으로 두고 기존 이유 앞부분을 `substring(기존, 1, 50 - 3 - len(reason) - 1) + "…"`로 줄인 뒤 `" / " + reason`을 붙인다(`@Query`의 else 가지, 기존 `locate`/`maxKeep` 조건은 4000자 대신 이 계산으로 대체). 단위 테스트: 기존 50자 이유 + "학생 호출" → 길이 ≤ 50이고 "학생 호출"로 끝남.
+- [Important] src/main/java/com/swunion/lab/agent/AgentRunner.java:141-153,182 — needs-help 이유는 `재점검 실패: <signature>` / LLM 실패 / serverNotes / 에이전트 escalate 이유 순으로 이어 붙인 뒤 `flagNeedsHelp`가 앞 49자만 남긴다. escalate는 보통 복구 실패(재점검도 실패)와 같이 일어나고 signature는 `MISSING:a|MISSING:b|…`로 길어, 모델이 쓴 50자 이유가 통째로 잘린다. 대시보드에는 signature 조각만 보인다 — 강사용 문장(escalate 이유)을 맨 앞에 두고 signature 같은 기계 문구는 뒤로 보낸다(예: `reasons.add(0, state.escalationReason)`). `AgentAction.escalationReason`은 전체 문장 그대로 둔다. 테스트: 재점검이 MISMATCH인 채 escalate한 실행의 needsHelpReason이 escalate 이유로 시작.
+- [Minor] src/main/java/com/swunion/lab/agent/AgentTools.java:260 — escalate 이유를 도구 안에서 50자로 줄여 `state.escalationReason`에 넣으므로, 펼친 화면의 `AgentAction.escalationReason`에서도 모델의 긴 이유가 사라진다(요구는 "needs-help 이유로 저장할 때" 줄이기). 도구에서는 `AgentContext.truncate(…, 300)`만 하고 50자 줄임은 `flagNeedsHelp`에 맡긴다. 위 Important와 같이 고친다.
+- [Minor] src/main/java/com/swunion/lab/agent/AgentRunner.java:48-92 — SYSTEM_PROMPT 규칙 8·11은 여전히 "짧은 요약", "짧게"다. 도구 스키마에는 50자가 있지만 프롬프트에도 "summary·reason은 공백 포함 50자 이내 한 문장"을 넣어 일치시킨다.
+- [Minor] src/main/java/com/swunion/lab/session/ReportText.java:20, web/src/lib/display.ts:75 — 코드 포인트 기준이라 ZWJ 이모지·결합 문자 묶음은 중간에서 잘릴 수 있다(깨진 서로게이트는 생기지 않음). 서버와 웹이 같은 기준이어서 동작은 일치한다. 받아들이고 넘어가도 된다.
+- [Minor] web/src/lib/display.ts:71-80 — 웹 단위 테스트 프레임워크가 없어 `clampReport`는 자동 테스트가 없다(구현자도 보고함). 서버 `ReportTextTest`와 규칙이 같음을 눈으로만 확인했다. 웹 테스트가 생기면 51자·서로게이트·null 경계 테스트를 추가한다.
