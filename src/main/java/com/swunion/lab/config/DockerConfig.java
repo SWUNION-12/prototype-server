@@ -8,6 +8,7 @@ import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.docker.DockerJavaGateway;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -29,7 +30,8 @@ public class DockerConfig {
 	}
 
 	@Bean
-	public DockerGateway dockerGateway(DockerClient client) {
-		return new DockerJavaGateway(client);
+	public DockerGateway dockerGateway(DockerClient client,
+			@Value("${lab.container-memory-mb:" + DockerJavaGateway.DEFAULT_MEMORY_MB + "}") int memoryMb) {
+		return new DockerJavaGateway(client, memoryMb);
 	}
 }

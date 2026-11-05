@@ -30,10 +30,25 @@ public class DockerJavaGateway implements DockerGateway {
 	private static final int LOG_TAIL_CHARS = 4000;
 	private static final String STUDENT_USER = "coder";
 
+	/** 학생 컨테이너 메모리 기본 상한(MB). code-server와 파이썬 확장만으로 수백 MB를 쓰므로 너무 낮추면 IDE가 죽는다. */
+	public static final int DEFAULT_MEMORY_MB = 800;
+	// code-server가 뜨는 데 필요한 최소치. 이보다 낮은 설정은 컨테이너가 시작하자마자 죽으므로 시작 단계에서 막는다.
+	static final int MIN_MEMORY_MB = 256;
+
 	private final DockerClient docker;
+	private final long memoryBytes;
 
 	public DockerJavaGateway(DockerClient docker) {
+		this(docker, DEFAULT_MEMORY_MB);
+	}
+
+	public DockerJavaGateway(DockerClient docker, int memoryMb) {
+		if (memoryMb < MIN_MEMORY_MB) {
+			throw new IllegalArgumentException(
+					"학생 컨테이너 메모리는 " + MIN_MEMORY_MB + "MB 이상이어야 합니다: " + memoryMb);
+		}
 		this.docker = docker;
+		this.memoryBytes = memoryMb * 1024L * 1024L;
 	}
 
 	@Override
@@ -146,7 +161,7 @@ public class DockerJavaGateway implements DockerGateway {
 	public String createAndStart(ContainerSpec spec) {
 		ExposedPort port = ExposedPort.tcp(spec.containerPort());
 		// bindIp만 주면 호스트 포트가 비어 Docker가 임의 포트를 고른다.
-		HostConfig host = HostConfig.newHostConfig().withMemory(1073741824L).withNanoCPUs(1000000000L)
+		HostConfig host = HostConfig.newHostConfig().withMemory(memoryBytes).withNanoCPUs(1000000000L)
 				.withPidsLimit(256L).withSecurityOpts(List.of("no-new-privileges"))
 				.withPortBindings(new PortBinding(Ports.Binding.bindIp(spec.bindAddress()), port))
 				.withBinds(new Bind(spec.volumeName(), new Volume(spec.volumeMountPath())))

@@ -27,3 +27,5 @@ lab:
   # 학생 컨테이너가 서버에 닿는 주소(IDE 안 확장이 쓴다). 서버를 8080이 아닌 포트로 띄우면 같이 바꾼다.
   server-url-for-containers: ${SERVER_URL_FOR_CONTAINERS:http://host.docker.internal:8080}
   check-enabled: ${CHECK_ENABLED:true}
+  # 학생 컨테이너 하나의 메모리 상한(MB). 256 미만이면 서버가 시작하지 않는다.
+  container-memory-mb: ${CONTAINER_MEMORY_MB:800}
