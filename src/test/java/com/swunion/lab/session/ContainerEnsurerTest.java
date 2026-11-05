@@ -165,7 +165,8 @@ class ContainerEnsurerTest {
 		assertThat(spec.image()).isEqualTo("t/course-1:1");
 		// 이 세션은 키 없는 예전 행이라 SWUNION_IDE_KEY가 없다. 서버 주소는 모든 컨테이너에 들어간다.
 		assertThat(spec.env()).containsOnly(java.util.Map.entry("PASSWORD", "pw-keep-24-chars-ABCDEF"),
-				java.util.Map.entry("SWUNION_SERVER_URL", "http://host.docker.internal:8080"));
+				java.util.Map.entry("SWUNION_SERVER_URL", "http://host.docker.internal:8080"),
+				java.util.Map.entry("CODE_SERVER_COOKIE_SUFFIX", session.getVolumeName()));
 		assertThat(spec.bindAddress()).isEqualTo("127.0.0.1");
 		assertThat(spec.containerPort()).isEqualTo(8080);
 		assertThat(spec.volumeMountPath()).isEqualTo("/home/coder/project");

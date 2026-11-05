@@ -65,7 +65,18 @@ class ContainerSpecsTest {
 		ContainerSpec spec = specs.forSession(s, course);
 
 		assertThat(spec.env()).isEqualTo(Map.of("PASSWORD", "pw-24-chars-ABCDEFGHIJ", "SWUNION_IDE_KEY", KEY,
-				"SWUNION_SERVER_URL", SERVER_URL));
+				"SWUNION_SERVER_URL", SERVER_URL, "CODE_SERVER_COOKIE_SUFFIX", VOLUME));
+	}
+
+	@Test
+	void cookieSuffixDiffersPerSession() {
+		// 프록시 뒤에서는 모든 학생 IDE가 같은 주소를 쓰므로, 쿠키 이름이 같으면 한 브라우저에서 로그인이 서로 덮인다.
+		StudentSession a = keyed(KEY);
+		StudentSession b = new StudentSession(course, "영희", "tok-specs-other", "pw-other-24-chars-ABC");
+		b.setVolumeName(VOLUME + "-other");
+
+		assertThat(specs.forSession(a, course).env().get("CODE_SERVER_COOKIE_SUFFIX"))
+				.isNotEqualTo(specs.forSession(b, course).env().get("CODE_SERVER_COOKIE_SUFFIX"));
 	}
 
 	@Test
@@ -77,7 +88,8 @@ class ContainerSpecsTest {
 		ContainerSpec spec = specs.forSession(s, course);
 
 		assertThat(spec.env()).doesNotContainKey("SWUNION_IDE_KEY");
-		assertThat(spec.env()).isEqualTo(Map.of("PASSWORD", "pw-legacy-24-chars-ABC", "SWUNION_SERVER_URL", SERVER_URL));
+		assertThat(spec.env()).isEqualTo(Map.of("PASSWORD", "pw-legacy-24-chars-ABC", "SWUNION_SERVER_URL", SERVER_URL,
+				"CODE_SERVER_COOKIE_SUFFIX", VOLUME));
 	}
 
 	@Test

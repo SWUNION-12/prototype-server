@@ -44,6 +44,8 @@ public class ContainerSpecs {
 			env.put("SWUNION_IDE_KEY", s.getIdeKey());
 		}
 		env.put("SWUNION_SERVER_URL", props.serverUrlForContainers());
+		// 프록시 뒤에서는 모든 학생 IDE가 한 주소를 쓴다. 쿠키 이름을 세션마다 다르게 해 한 브라우저에서 로그인이 덮이지 않게 한다.
+		env.put("CODE_SERVER_COOKIE_SUFFIX", s.getVolumeName());
 		return env;
 	}
 }
