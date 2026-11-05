@@ -1,6 +1,6 @@
 'use strict';
 
-// GET /api/ide/status 응답을 패널이 그대로 그릴 값으로 바꾼다. 문구는 학생 화면(student.html)과 같다.
+// GET /api/ide/status 응답을 패널이 그대로 그릴 값으로 바꾼다. 문구는 학생 실습 화면(/lab)과 같다.
 // 판단은 여기서 끝내고 webview는 받은 문자열을 textContent로 옮기기만 한다. vscode 모듈을 쓰지 않는다.
 
 const ENV = {

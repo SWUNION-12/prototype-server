@@ -8,7 +8,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 환경 점검 결과(Issue)를 사람이 읽는 한국어 한 줄로 바꾼다. 강사 대시보드와 IDE 패널이 같은 문구를 보이도록
- * 한 곳에 둔다(static/student.html의 describeIssue도 이 문장들과 맞춘다).
+ * 한 곳에 둔다(실습 화면 /lab도 서버가 풀어 준 이 문장을 그대로 보인다).
  */
 public final class IssueTexts {
 
