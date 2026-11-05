@@ -45,7 +45,7 @@ class SessionServiceTest {
 	@BeforeEach
 	void setUp() {
 		var props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
-				"b:1", "t/course-", "swunion-test-s");
+				"b:1", "t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		HealthWaiter waiter = (port, timeout) -> {
 			probedPorts.add(port);
 			duringHealthWait.accept(port);
@@ -85,7 +85,9 @@ class SessionServiceTest {
 		assertThat(spec.volumeName()).isEqualTo(spec.name()).isEqualTo(a.getVolumeName());
 		assertThat(sessions.findById(a.getId()).orElseThrow().getVolumeName()).isEqualTo(spec.volumeName());
 		assertThat(spec.image()).isEqualTo("t/course-1:1");
-		assertThat(spec.env()).containsEntry("PASSWORD", a.getIdePassword());
+		assertThat(spec.env()).containsEntry("PASSWORD", a.getIdePassword())
+				.containsEntry("SWUNION_IDE_KEY", sessions.findById(a.getId()).orElseThrow().getIdeKey())
+				.containsEntry("SWUNION_SERVER_URL", "http://host.docker.internal:8080");
 		assertThat(spec.bindAddress()).isEqualTo("127.0.0.1");
 		assertThat(spec.containerPort()).isEqualTo(8080);
 		assertThat(spec.volumeMountPath()).isEqualTo("/home/coder/project");
@@ -161,7 +163,9 @@ class SessionServiceTest {
 	@Test
 	void specToStringMasksEnvValues() {
 		StudentSession s = join("ABC123", "철수");
-		assertThat(docker.specs.get(0).toString()).contains("PASSWORD=***").doesNotContain(s.getIdePassword());
+		String key = sessions.findById(s.getId()).orElseThrow().getIdeKey();
+		assertThat(docker.specs.get(0).toString()).contains("PASSWORD=***").contains("SWUNION_IDE_KEY=***")
+				.doesNotContain(s.getIdePassword()).doesNotContain(key);
 	}
 
 	@Test
@@ -175,6 +179,47 @@ class SessionServiceTest {
 		service.clearNeedsHelp(s.getId());
 		assertThat(service.byToken(s.getToken()).isNeedsHelp()).isFalse();
 		assertThat(service.byToken(s.getToken()).getNeedsHelpReason()).isNull();
+	}
+
+	@Test
+	void byIdeKeyFindsTheSessionOwningThatKey() {
+		StudentSession a = join("ABC123", "철수");
+		StudentSession b = join("ABC123", "영희");
+		String keyA = sessions.findById(a.getId()).orElseThrow().getIdeKey();
+		String keyB = sessions.findById(b.getId()).orElseThrow().getIdeKey();
+
+		assertThat(service.byIdeKey(keyA).getId()).isEqualTo(a.getId());
+		assertThat(service.byIdeKey(keyB).getId()).isEqualTo(b.getId());
+		assertThatThrownBy(() -> service.byIdeKey("0".repeat(64))).isInstanceOf(SessionNotFoundException.class);
+		assertThatThrownBy(() -> service.byIdeKey(keyA.toUpperCase())).as("정확히 같은 값만 찾는다")
+				.isInstanceOf(SessionNotFoundException.class);
+		assertThatThrownBy(() -> service.byIdeKey(a.getToken())).as("토큰은 키가 아니다")
+				.isInstanceOf(SessionNotFoundException.class);
+	}
+
+	@Test
+	void byIdeKeyDoesNotQueryForABlankKey() {
+		// 키 없는 예전 세션이 null 키로 걸리면 안 된다. 빈 값은 저장소를 부르기 전에 거절한다.
+		SessionRepository repository = org.mockito.Mockito.mock(SessionRepository.class);
+		SessionService unit = SessionServices.create(repository, courses, docker,
+				new LabProperties("i", "p", "m", 15, "http://x", "127.0.0.1", Path.of("."), "b:1", "t/course-",
+						"swunion-test-s", "http://host.docker.internal:8080"),
+				(port, timeout) -> true, JsonMapper.builder().build());
+
+		assertThatThrownBy(() -> unit.byIdeKey(null)).isInstanceOf(SessionNotFoundException.class);
+		assertThatThrownBy(() -> unit.byIdeKey("")).isInstanceOf(SessionNotFoundException.class);
+		assertThatThrownBy(() -> unit.byIdeKey("   ")).isInstanceOf(SessionNotFoundException.class);
+
+		org.mockito.Mockito.verifyNoInteractions(repository);
+	}
+
+	@Test
+	void legacyRowWithoutKeyIsNeverFoundByAnyKey() {
+		StudentSession legacy = sessions.save(new StudentSession(ready, "예전", "tok-legacy-nokey", "pw-legacy"));
+		assertThat(legacy.getIdeKey()).isNull();
+
+		assertThatThrownBy(() -> service.byIdeKey("null")).isInstanceOf(SessionNotFoundException.class);
+		assertThatThrownBy(() -> service.byIdeKey("tok-legacy-nokey")).isInstanceOf(SessionNotFoundException.class);
 	}
 
 	@Test
@@ -303,6 +348,7 @@ class SessionServiceTest {
 		assertThat(docker.specs.get(1).volumeName()).isEqualTo(volume);
 		assertThat(docker.specs.get(1).env()).containsEntry("PASSWORD", s.getIdePassword());
 		StudentSession fresh = sessions.findById(s.getId()).orElseThrow();
+		assertThat(docker.specs.get(1).env()).as("다시 만들어도 같은 키").containsEntry("SWUNION_IDE_KEY", fresh.getIdeKey());
 		assertThat(fresh.getHostPort()).isEqualTo(docker.ports.get(fresh.getContainerId()));
 		assertThat(probedPorts).containsExactly(fresh.getHostPort());
 	}

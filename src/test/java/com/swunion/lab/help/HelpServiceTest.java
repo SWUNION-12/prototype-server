@@ -67,6 +67,32 @@ class HelpServiceTest {
 	}
 
 	@Test
+	void sessionOverloadsUseTheGivenSessionWithoutLookingUpATokenAgain() {
+		// IDE API는 컨테이너 키로 이미 세션을 찾았다. 토큰 경로와 같은 규칙(수업 열림, 처리 중 거절)을 그대로 탄다.
+		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
+
+		HelpRequest h = service.request(session, "KeyError: 'a'");
+		service.escalate(session);
+
+		assertThat(h.getErrorType()).isEqualTo("KeyError");
+		verify(trigger).onHelp(eq(session), eq(1L), eq("KeyError"), eq("KeyError: 'a'"));
+		verify(sessions).addNeedsHelpReason(7L, "학생 호출");
+		verify(sessions, never()).byToken(any());
+	}
+
+	@Test
+	void sessionOverloadsKeepTheBusyAndEndedCourseRules() {
+		when(trigger.isRunning(7L)).thenReturn(true);
+		assertThatThrownBy(() -> service.request(session, "KeyError")).isInstanceOf(HelpBusyException.class);
+
+		course.setStatus(CourseStatus.ENDED);
+		assertThatThrownBy(() -> service.request(session, "KeyError")).isInstanceOf(CourseEndedException.class);
+		assertThatThrownBy(() -> service.escalate(session)).isInstanceOf(CourseEndedException.class);
+		verify(helps, never()).save(any());
+		verify(sessions, never()).addNeedsHelpReason(anyLong(), any());
+	}
+
+	@Test
 	void truncatesErrorText() {
 		when(trigger.onHelp(any(), anyLong(), any(), any())).thenReturn(true);
 		HelpRequest h = service.request("tok", "a".repeat(5000));

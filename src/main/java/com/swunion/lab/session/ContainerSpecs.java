@@ -3,6 +3,7 @@ package com.swunion.lab.session;
 import com.swunion.lab.config.LabProperties;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.docker.ContainerSpec;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
@@ -27,8 +28,22 @@ public class ContainerSpecs {
 	 * IDE 비밀번호도 세션에 저장된 값을 그대로 쓴다.
 	 */
 	public ContainerSpec forSession(StudentSession s, Course c) {
-		return new ContainerSpec(s.getVolumeName(), c.getImageName(), Map.of("PASSWORD", s.getIdePassword()),
-				s.getVolumeName(), MOUNT_PATH, props.ideBindAddress(), IDE_PORT,
+		return new ContainerSpec(s.getVolumeName(), c.getImageName(), env(s), s.getVolumeName(), MOUNT_PATH,
+				props.ideBindAddress(), IDE_PORT,
 				Map.of("swunion.session", String.valueOf(s.getId()), "swunion.course", String.valueOf(c.getId())));
+	}
+
+	/**
+	 * 컨테이너 환경변수. IDE 안 확장이 SWUNION_SERVER_URL의 서버에 SWUNION_IDE_KEY로 자기를 알린다.
+	 * 재생성도 이 메서드를 거치므로 세션의 같은 키가 다시 들어간다. 키 없는 예전 세션은 키 변수만 뺀다.
+	 */
+	private Map<String, String> env(StudentSession s) {
+		Map<String, String> env = new LinkedHashMap<>();
+		env.put("PASSWORD", s.getIdePassword());
+		if (s.getIdeKey() != null) {
+			env.put("SWUNION_IDE_KEY", s.getIdeKey());
+		}
+		env.put("SWUNION_SERVER_URL", props.serverUrlForContainers());
+		return env;
 	}
 }

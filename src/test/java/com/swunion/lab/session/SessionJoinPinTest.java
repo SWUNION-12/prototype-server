@@ -83,7 +83,7 @@ class SessionJoinPinTest {
 	@BeforeEach
 	void setUp() {
 		props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
-				"b:1", "t/course-", "swunion-test-s");
+				"b:1", "t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		pins = new PinPolicy(clock);
 		ensurer = new RecordingEnsurer(sessions, docker, new ContainerSpecs(props), clock);
 		service = serviceOn(sessions);
@@ -184,6 +184,69 @@ class SessionJoinPinTest {
 		assertThat(again.session().getVolumeName()).isEqualTo(first.session().getVolumeName());
 		assertThat(sessions.count()).isEqualTo(1);
 		assertThat(docker.specs).as("새 컨테이너를 만들지 않는다").hasSize(1);
+	}
+
+	@Test
+	void newSessionGetsIdeKey() {
+		StudentSession a = service.join(CODE, "김철수", "1234").session();
+		StudentSession b = service.join(CODE, "박영희", "1234").session();
+
+		assertThat(row(a.getId()).getIdeKey()).matches("[0-9a-f]{64}");
+		assertThat(row(b.getId()).getIdeKey()).matches("[0-9a-f]{64}").isNotEqualTo(row(a.getId()).getIdeKey());
+		assertThat(row(a.getId()).getIdeKey()).as("토큰과 다른 값").isNotEqualTo(row(a.getId()).getToken());
+		// 키는 컨테이너 환경변수로 들어가고, 키로 그 세션을 찾을 수 있다.
+		assertThat(docker.specs.get(0).env()).containsEntry("SWUNION_IDE_KEY", row(a.getId()).getIdeKey());
+		assertThat(docker.specs.get(1).env()).containsEntry("SWUNION_IDE_KEY", row(b.getId()).getIdeKey());
+		assertThat(service.byIdeKey(row(a.getId()).getIdeKey()).getId()).isEqualTo(a.getId());
+		assertThat(service.byIdeKey(row(b.getId()).getIdeKey()).getId()).isEqualTo(b.getId());
+	}
+
+	@Test
+	void rejoinKeepsIdeKey() {
+		JoinResult first = service.join(CODE, "김철수", "1234");
+		long id = first.session().getId();
+		String key = row(id).getIdeKey();
+		String oldToken = row(id).getToken();
+
+		JoinResult again = service.join(CODE, "김철수", "1234");
+
+		// 토큰은 되찾을 때마다 바뀌지만 컨테이너 안에 들어 있는 키는 바뀌면 안 된다. 바뀌면 패널이 끊긴다.
+		assertThat(again.resumed()).isTrue();
+		assertThat(row(id).getToken()).isNotEqualTo(oldToken);
+		assertThat(row(id).getIdeKey()).isEqualTo(key);
+		assertThat(service.byIdeKey(key).getId()).isEqualTo(id);
+		// 틀린 PIN으로 거절된 시도도 키를 건드리지 않는다.
+		rejected("김철수", "0000");
+		assertThat(row(id).getIdeKey()).isEqualTo(key);
+	}
+
+	@Test
+	void rejoinRecreatesContainerWithTheSameKey() {
+		long id = service.join(CODE, "김철수", "1234").session().getId();
+		String key = row(id).getIdeKey();
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+
+		service.join(CODE, "김철수", "1234");
+
+		assertThat(ensurer.outcomes).containsExactly(EnsureOutcome.RECREATED);
+		assertThat(docker.specs).hasSize(2);
+		assertThat(docker.specs.get(1).env()).containsEntry("SWUNION_IDE_KEY", key);
+		assertThat(row(id).getIdeKey()).isEqualTo(key);
+	}
+
+	@Test
+	void legacyRowStaysWithoutKeyEvenWhenItsContainerIsRecreated() {
+		// 키 없는 예전 세션을 위해 키를 새로 만들거나 컨테이너를 다시 만드는 경로는 없다. 다시 만들 때도 키가 없다.
+		StudentSession old = legacy("박영희", "legacy-token-0002", "c-legacy-2");
+		docker.running = false;
+		docker.containerExistsAnswer = false;
+
+		service.join(CODE, "박영희", "5678");
+
+		assertThat(row(old.getId()).getIdeKey()).isNull();
+		assertThat(docker.specs).hasSize(1);
+		assertThat(docker.specs.get(0).env()).doesNotContainKey("SWUNION_IDE_KEY").containsKey("SWUNION_SERVER_URL");
 	}
 
 	@Test
@@ -710,7 +773,8 @@ class SessionJoinPinTest {
 		String log = output.getAll();
 		assertThat(log).as("잠금 로그가 실제로 찍혔다").contains("세션 " + id);
 		assertThat(log).doesNotContainPattern("(?<!\\d)7391(?!\\d)").doesNotContainPattern("(?<!\\d)8462(?!\\d)")
-				.doesNotContain(row.getPinHash()).doesNotContain(firstToken).doesNotContain(row.getToken());
+				.doesNotContain(row.getPinHash()).doesNotContain(firstToken).doesNotContain(row.getToken())
+				.doesNotContain(row.getIdeKey());
 	}
 
 	/** 실제 ensureRunning을 그대로 하되 어느 세션에 몇 번 불렸고 결과가 무엇이었는지 남긴다. */

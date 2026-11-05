@@ -16,7 +16,10 @@ public record LabProperties(
 		@DefaultValue("swunion/lab-base:1") String baseImage,
 		@DefaultValue("swunion/course-") String courseImagePrefix,
 		// 컨테이너·볼륨 이름 접두사. 테스트는 실서버 학생 볼륨(swunion-s1 등)과 겹치지 않게 다른 값을 쓴다.
-		@DefaultValue("swunion-s") String containerNamePrefix) {
+		@DefaultValue("swunion-s") String containerNamePrefix,
+		// 학생 컨테이너 안의 확장이 서버에 닿는 주소. 컨테이너 환경변수 SWUNION_SERVER_URL로 들어간다.
+		// 학생 브라우저가 보는 publicBaseUrl과는 다른 길이다(컨테이너에서 localhost는 컨테이너 자신이다).
+		@DefaultValue("http://host.docker.internal:8080") String serverUrlForContainers) {
 
 	// 레코드 기본 toString은 모든 값을 찍는다. 설정 객체가 로그나 예외 메시지에 실려도 강사 비밀번호가 남지 않게 가린다.
 	@Override
@@ -24,6 +27,7 @@ public record LabProperties(
 		return "LabProperties[instructorUsername=" + instructorUsername + ", instructorPassword=***, llmModel=" + llmModel
 				+ ", checkIntervalSeconds=" + checkIntervalSeconds + ", publicBaseUrl=" + publicBaseUrl
 				+ ", ideBindAddress=" + ideBindAddress + ", dataDir=" + dataDir + ", baseImage=" + baseImage
-				+ ", courseImagePrefix=" + courseImagePrefix + ", containerNamePrefix=" + containerNamePrefix + "]";
+				+ ", courseImagePrefix=" + courseImagePrefix + ", containerNamePrefix=" + containerNamePrefix
+				+ ", serverUrlForContainers=" + serverUrlForContainers + "]";
 	}
 }

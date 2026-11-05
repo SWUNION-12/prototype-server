@@ -37,8 +37,8 @@ public class SecurityConfig {
 				.build());
 	}
 
-	// 학생은 세션 토큰 경로(/api/s/{token}, /l/{token})로만 접근하므로 강사 영역만 인증한다.
-	// 토큰 기반 POST가 많아 CSRF는 끈다.
+	// 학생은 세션 토큰 경로(/api/s/{token}, /l/{token})로, 학생 컨테이너 안의 확장은 컨테이너 키 경로(/api/ide/**,
+	// 헤더 X-Session-Key)로만 접근하므로 강사 영역만 인증한다. 토큰·키 기반 POST가 많아 CSRF는 끈다.
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		http.authorizeHttpRequests(a -> a

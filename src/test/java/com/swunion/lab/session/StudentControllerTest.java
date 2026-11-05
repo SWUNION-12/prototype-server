@@ -16,6 +16,7 @@ import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseStatus;
 import com.swunion.lab.docker.DockerGateway;
 import java.time.Instant;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +25,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = {
 		"spring.config.import=optional:file:./build/no-such.env[.properties]",
@@ -38,6 +41,8 @@ class StudentControllerTest {
 	CourseRepository courses;
 	@Autowired
 	SessionRepository sessions;
+	@Autowired
+	JsonMapper json;
 	@MockitoBean
 	DockerGateway docker;
 	@MockitoBean
@@ -74,6 +79,33 @@ class StudentControllerTest {
 				.andExpect(jsonPath("$.workspaceLost").value(false))
 				.andExpect(jsonPath("$.latestHelp").doesNotExist())
 				.andExpect(jsonPath("$.containerId").doesNotExist());
+	}
+
+	@Test
+	void studentStatusKeepsItsFieldsAndNeverShowsTheIdeKey() throws Exception {
+		Course c = new Course("파이썬 기초", "3.12", "six==1.16.0");
+		c.setStatus(CourseStatus.READY);
+		c.setEntryCode("CTRL05");
+		c.setImageName("x/course-5:1");
+		courses.save(c);
+		String key = "ab".repeat(32);
+		StudentSession s = sessions.save(new StudentSession(c, "민수", "민수", "tok-student-fields", "pw-fields-24-chars-AB",
+				null, key));
+		s.setHostPort(40125);
+		sessions.save(s);
+
+		String body = mvc.perform(get("/api/s/tok-student-fields")).andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		// 기존 아홉 필드는 그대로이고, 공통 상태 뷰의 issuesText가 더해진다. 컨테이너 키는 학생 API에도 없다.
+		Map<String, Object> fields = json.readValue(body, new TypeReference<Map<String, Object>>() {
+		});
+		assertThat(fields.keySet()).containsExactlyInAnyOrder("name", "courseName", "ideUrl", "idePassword",
+				"envStatus", "issues", "issuesText", "needsHelp", "workspaceLost", "latestHelp");
+		assertThat(body).doesNotContain(key).doesNotContain("ideKey");
+		mvc.perform(get("/api/s/tok-student-fields")).andExpect(jsonPath("$.ideUrl").value("http://localhost:40125/"))
+				.andExpect(jsonPath("$.idePassword").value("pw-fields-24-chars-AB"))
+				.andExpect(jsonPath("$.issuesText").isEmpty());
 	}
 
 	@Test

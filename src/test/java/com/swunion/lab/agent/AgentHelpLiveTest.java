@@ -56,7 +56,7 @@ class AgentHelpLiveTest {
 		s = sessions.save(s);
 
 		LabProperties props = new LabProperties("i", "p", "claude-haiku-5-5", 15, "http://localhost:8080", "127.0.0.1",
-				Path.of("."), "b:1", "t/course-", "swunion-test-s");
+				Path.of("."), "b:1", "t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		FakeGateway docker = new FakeGateway();
 		FakeChecker checker = new FakeChecker();
 		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);

@@ -19,7 +19,7 @@ class AnthropicLiveTest {
 	@Test
 	void modelCallsPingTool() {
 		LabProperties props = new LabProperties("i", "p", "claude-haiku-5-5", 60, "http://x", "127.0.0.1",
-				Path.of("./data"), "b", "c", "swunion-s");
+				Path.of("./data"), "b", "c", "swunion-s", "http://host.docker.internal:8080");
 		AnthropicLlmClient client = new AnthropicLlmClient(AnthropicLlmClient.newRestClient(RestClient.builder()),
 				new ApiKeyResolver(), props);
 

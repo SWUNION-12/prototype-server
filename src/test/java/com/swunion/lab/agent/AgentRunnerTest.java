@@ -68,7 +68,7 @@ class AgentRunnerTest {
 		s.setContainerId("c1");
 		session = sessions.save(s);
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
-				"t/course-", "swunion-test-s");
+				"t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);
 		AgentTools tools = new AgentTools(checker, docker, sessionService, json);
 		runner = new AgentRunner(llm, tools, checker, sessionService, actions, events::add, json);
@@ -339,7 +339,7 @@ class AgentRunnerTest {
 		org.mockito.Mockito.when(failing.save(org.mockito.ArgumentMatchers.any()))
 				.thenThrow(new org.springframework.dao.DataIntegrityViolationException("too long"));
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
-				"t/course-", "swunion-test-s");
+				"t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		SessionService sessionService = SessionServices.create(sessions, courses, docker, props, (port, t) -> true, json);
 		AgentRunner r = new AgentRunner(llm, new AgentTools(checker, docker, sessionService, json), checker,
 				sessionService, failing, events::add, json);

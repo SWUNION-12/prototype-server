@@ -228,7 +228,7 @@ if (query.get('resumed') === '1') {
 const ENV_LABEL = { OK: '정상', MISMATCH: '수업 환경과 다름', REPAIRING: '복구 중', UNKNOWN: '확인 중' };
 const HELP_LABEL = { PROCESSING: '분석 중', EXPLAINED: '설명', RESOLVED: '자동으로 해결', ESCALATED: '강사에게 전달', NO_ACTION: '조치 없음' };
 
-// 서버의 DashboardService.readable과 같은 문장. 문자열로 오면 그대로 쓴다.
+// 서버의 IssueTexts와 같은 문장. 문자열로 오면 그대로 쓴다.
 function describeIssue(i) {
   if (typeof i === 'string') return i;
   if (!i || typeof i !== 'object') return '';

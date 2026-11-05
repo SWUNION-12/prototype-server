@@ -49,36 +49,15 @@ public class StudentController {
 		return ResponseEntity.status(r.resumed() ? HttpStatus.OK : HttpStatus.CREATED).body(body);
 	}
 
-	// containerId, 다른 학생의 토큰, 파일 경로는 싣지 않는다.
+	// containerId, 다른 학생의 토큰, 파일 경로, 컨테이너 키는 싣지 않는다.
 	@GetMapping("/api/s/{token}")
 	Map<String, Object> me(@PathVariable String token) {
 		StudentSession s = service.byToken(token);
-		Map<String, Object> m = new LinkedHashMap<>();
-		m.put("name", s.getDisplayName());
-		m.put("courseName", s.getCourse().getName());
+		Map<String, Object> m = StudentStatusView.of(s, service.issues(s), service.issueTexts(s),
+				help.latest(s.getId()));
+		// IDE 패널과 달리 학생 화면은 IDE로 가는 주소와 비밀번호를 보여 준다.
 		m.put("ideUrl", service.ideUrl(s));
 		m.put("idePassword", s.getIdePassword());
-		m.put("envStatus", s.getEnvStatus());
-		m.put("issues", service.issues(s));
-		m.put("needsHelp", s.isNeedsHelp());
-		// 볼륨이 사라져 빈 작업 공간으로 다시 만들었을 때 화면이 안내한다.
-		m.put("workspaceLost", s.getWorkspaceLostAt() != null);
-		m.put("latestHelp", latestHelp(help.latest(s.getId())));
-		return m;
-	}
-
-	// errorText는 돌려주지 않는다. 응답을 작게 유지한다.
-	private static Map<String, Object> latestHelp(HelpRequest h) {
-		if (h == null) {
-			return null;
-		}
-		Map<String, Object> m = new LinkedHashMap<>();
-		m.put("id", h.getId());
-		m.put("status", h.getStatus());
-		m.put("errorType", h.getErrorType());
-		m.put("explanation", h.getExplanation());
-		m.put("escalated", h.isEscalated());
-		m.put("createdAt", h.getCreatedAt());
 		return m;
 	}
 

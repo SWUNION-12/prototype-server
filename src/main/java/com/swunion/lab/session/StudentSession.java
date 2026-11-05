@@ -58,6 +58,11 @@ public class StudentSession {
 	@ColumnDefault("0")
 	private int failedPinAttempts;
 	private Instant pinLockedUntil;
+	// 컨테이너 안 확장이 서버에 자기를 알리는 키(무작위 32바이트의 소문자 16진 64자). 컨테이너 환경변수로 들어가며
+	// PIN 되찾기로 토큰이 바뀌어도 그대로여야 하므로 한 번 정하면 바꾸지 않는다. 이 기능 전에 만든 행은 null이고
+	// 고유 제약에서 NULL끼리는 다르게 보므로 걸리지 않는다. null 행에는 키를 만들어 주지 않는다.
+	@Column(unique = true, length = 64)
+	private String ideKey;
 
 	protected StudentSession() {
 	}
@@ -76,6 +81,13 @@ public class StudentSession {
 		this(course, displayName, token, idePassword);
 		this.nameKey = nameKey;
 		this.pinHash = pinHash;
+	}
+
+	/** PIN 입장으로 만드는 새 행에 컨테이너 키까지 더한 것. 키는 insert 때만 정해진다. */
+	public StudentSession(Course course, String displayName, String nameKey, String token, String idePassword,
+			String pinHash, String ideKey) {
+		this(course, displayName, nameKey, token, idePassword, pinHash);
+		this.ideKey = ideKey;
 	}
 
 	public Long getId() { return id; }
@@ -116,4 +128,6 @@ public class StudentSession {
 	public String getPinHash() { return pinHash; }
 	public int getFailedPinAttempts() { return failedPinAttempts; }
 	public Instant getPinLockedUntil() { return pinLockedUntil; }
+	// 읽기만 한다. 키는 새 행을 넣을 때 정해지고 이후 어떤 쓰기도 바꾸지 않는다.
+	public String getIdeKey() { return ideKey; }
 }

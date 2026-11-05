@@ -24,7 +24,11 @@ public class HelpService {
 	}
 
 	public HelpRequest request(String token, String errorText) {
-		StudentSession s = sessions.byToken(token);
+		return request(sessions.byToken(token), errorText);
+	}
+
+	/** 학생 토큰 경로와 IDE 컨테이너 키 경로가 같은 규칙을 타도록, 세션을 찾는 방법과 요청 처리를 나눈다. */
+	public HelpRequest request(StudentSession s, String errorText) {
 		requireOpenCourse(s);
 		if (trigger.isRunning(s.getId())) {
 			throw new HelpBusyException();
@@ -42,7 +46,10 @@ public class HelpService {
 	}
 
 	public void escalate(String token) {
-		StudentSession s = sessions.byToken(token);
+		escalate(sessions.byToken(token));
+	}
+
+	public void escalate(StudentSession s) {
 		requireOpenCourse(s);
 		// 에이전트가 먼저 남긴 이유(예: "재점검 실패: …")를 지우면 강사가 원인을 못 본다. 뒤에 덧붙인다.
 		sessions.addNeedsHelpReason(s.getId(), STUDENT_CALL);

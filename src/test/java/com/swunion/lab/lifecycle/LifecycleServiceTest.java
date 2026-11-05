@@ -145,7 +145,7 @@ class LifecycleServiceTest {
 	@BeforeEach
 	void setUp() {
 		props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", dataDir, "b:1",
-				"t/course-", "swunion-test-s");
+				"t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		ensurer = new ScriptedEnsurer(sessions, docker, new ContainerSpecs(props), Clock.systemUTC());
 		locks = new CourseLocks(Duration.ofSeconds(5));
 		service = serviceWith(Duration.ofSeconds(60));

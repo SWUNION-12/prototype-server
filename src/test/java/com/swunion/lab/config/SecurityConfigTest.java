@@ -16,7 +16,7 @@ class SecurityConfigTest {
 
 	private static LabProperties props(String password) {
 		return new LabProperties("instructor", password, "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."),
-				"b:1", "t/course-", "swunion-s");
+				"b:1", "t/course-", "swunion-s", "http://host.docker.internal:8080");
 	}
 
 	@Test

@@ -149,7 +149,10 @@ public class DockerJavaGateway implements DockerGateway {
 		HostConfig host = HostConfig.newHostConfig().withMemory(1073741824L).withNanoCPUs(1000000000L)
 				.withPidsLimit(256L).withSecurityOpts(List.of("no-new-privileges"))
 				.withPortBindings(new PortBinding(Ports.Binding.bindIp(spec.bindAddress()), port))
-				.withBinds(new Bind(spec.volumeName(), new Volume(spec.volumeMountPath())));
+				.withBinds(new Bind(spec.volumeName(), new Volume(spec.volumeMountPath())))
+				// 리눅스 Docker는 host.docker.internal을 기본으로 풀지 못한다. IDE 안 확장이 호스트의 서버에 닿으려면
+				// 모든 컨테이너에 이 항목이 있어야 한다(Docker Desktop은 이미 풀어 주므로 해가 없다).
+				.withExtraHosts("host.docker.internal:host-gateway");
 		List<String> env = new ArrayList<>();
 		spec.env().forEach((k, v) -> env.add(k + "=" + v));
 		String id = docker.createContainerCmd(spec.image()).withName(spec.name()).withEnv(env)

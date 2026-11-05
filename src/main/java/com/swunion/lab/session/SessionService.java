@@ -1,5 +1,6 @@
 package com.swunion.lab.session;
 
+import com.swunion.lab.check.IssueTexts;
 import com.swunion.lab.config.LabProperties;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseRepository;
@@ -154,8 +155,9 @@ public class SessionService {
 	}
 
 	private StudentSession insert(Course course, String name, String key, String pin) {
+		// 컨테이너 키는 새 행과 함께 정해지고 이후 바뀌지 않는다(되찾기는 토큰만 바꾼다).
 		StudentSession session = sessions.save(
-				new StudentSession(course, name, key, newToken(), newPassword(), pins.hash(pin)));
+				new StudentSession(course, name, key, newToken(), newPassword(), pins.hash(pin), newIdeKey()));
 		long sid = session.getId();
 		// 세션 id만으로 이름을 지으면 DB가 초기화되어 id가 다시 1부터 시작할 때 남아 있는 옛 학생의
 		// 볼륨·컨테이너와 겹친다. 8자리 무작위 접미사로 join마다 이름을 유일하게 만든다.
@@ -360,6 +362,18 @@ public class SessionService {
 		return sessions.findByToken(token == null ? "" : token).orElseThrow(SessionNotFoundException::new);
 	}
 
+	/**
+	 * IDE 안 확장이 보낸 컨테이너 키로 세션을 찾는다. 빈 값은 저장소를 부르지 않고 거절한다.
+	 * 키 없는 예전 세션(ideKey null)이 빈 값 조회에 걸리지 않게 하려는 것이기도 하다.
+	 * 키가 256비트 무작위 값이라 DB 동등 비교로 찾아도 타이밍으로 알아낼 수 없다.
+	 */
+	public StudentSession byIdeKey(String key) {
+		if (key == null || key.isBlank()) {
+			throw new SessionNotFoundException();
+		}
+		return sessions.findByIdeKey(key).orElseThrow(SessionNotFoundException::new);
+	}
+
 	// 아래 쓰기는 전부 자기 컬럼만 갱신한다. 점검·에이전트·학생 요청이 동시에 같은 세션을 쓰므로
 	// 엔티티 전체를 save하면 다른 쪽이 바꾼 값을 덮어쓴다.
 
@@ -416,6 +430,11 @@ public class SessionService {
 		});
 	}
 
+	/** issues와 같은 점검 결과를 대시보드와 같은 한국어 문구로 풀어 쓴 것. */
+	public List<String> issueTexts(StudentSession s) {
+		return IssueTexts.fromJson(json, s.getIssuesJson(), s.getId());
+	}
+
 	private String randomSuffix() {
 		byte[] b = new byte[4];
 		random.nextBytes(b);
@@ -423,6 +442,15 @@ public class SessionService {
 	}
 
 	private String newToken() {
+		return randomHex32();
+	}
+
+	private String newIdeKey() {
+		return randomHex32();
+	}
+
+	/** 무작위 32바이트의 소문자 16진 64자. */
+	private String randomHex32() {
 		byte[] b = new byte[32];
 		random.nextBytes(b);
 		return HexFormat.of().formatHex(b);

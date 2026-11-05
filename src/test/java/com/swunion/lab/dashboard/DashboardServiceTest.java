@@ -391,7 +391,7 @@ class DashboardServiceTest {
 
 		// 종료 뒤에는 입장이 거부되고, 주기 점검 대상(READY 수업)에서도 빠진다.
 		var props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
-				"b:1", "t/course-", "swunion-test-s");
+				"b:1", "t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		SessionService join = SessionServices.create(sessions, courses, docker, props, (port, timeout) -> true, json);
 		assertThatThrownBy(() -> join.join("DASH01", "새학생", "1234")).isInstanceOf(JoinException.class);
 		verify(docker, never()).createAndStart(any());

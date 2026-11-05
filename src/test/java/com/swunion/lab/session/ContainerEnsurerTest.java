@@ -51,7 +51,7 @@ class ContainerEnsurerTest {
 	@BeforeEach
 	void setUp() {
 		var props = new LabProperties("i", "p", "m", 15, "http://lab.example.com:8080", "127.0.0.1", Path.of("."),
-				"b:1", "t/course-", "swunion-test-s");
+				"b:1", "t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		specs = new ContainerSpecs(props);
 		ensurer = ensurerOn(sessions);
 		Course c = new Course("수업", "3.12", "six==1.16.0");
@@ -163,7 +163,9 @@ class ContainerEnsurerTest {
 		assertThat(spec.volumeName()).isEqualTo(session.getVolumeName());
 		assertThat(spec.name()).isEqualTo(session.getVolumeName());
 		assertThat(spec.image()).isEqualTo("t/course-1:1");
-		assertThat(spec.env()).containsOnly(java.util.Map.entry("PASSWORD", "pw-keep-24-chars-ABCDEF"));
+		// 이 세션은 키 없는 예전 행이라 SWUNION_IDE_KEY가 없다. 서버 주소는 모든 컨테이너에 들어간다.
+		assertThat(spec.env()).containsOnly(java.util.Map.entry("PASSWORD", "pw-keep-24-chars-ABCDEF"),
+				java.util.Map.entry("SWUNION_SERVER_URL", "http://host.docker.internal:8080"));
 		assertThat(spec.bindAddress()).isEqualTo("127.0.0.1");
 		assertThat(spec.containerPort()).isEqualTo(8080);
 		assertThat(spec.volumeMountPath()).isEqualTo("/home/coder/project");

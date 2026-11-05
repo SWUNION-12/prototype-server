@@ -2,7 +2,7 @@ package com.swunion.lab.dashboard;
 
 import com.swunion.lab.agent.AgentAction;
 import com.swunion.lab.agent.AgentActionRepository;
-import com.swunion.lab.check.Issue;
+import com.swunion.lab.check.IssueTexts;
 import com.swunion.lab.course.Course;
 import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.dashboard.DashboardView.ActionView;
@@ -29,8 +29,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
@@ -39,11 +37,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class DashboardService {
 
-	private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
-
 	static final String REPEATED_ERRORS_NOTE = "도움 버튼을 누른 학생 기준이며 전체 오류 수가 아닙니다.";
 	static final int RECENT_ACTIONS = 5;
-	static final String UNREADABLE_ISSUES = "점검 결과를 읽을 수 없음";
 	// toolLogJson 항목은 "도구이름 {인자} => 결과" 한 줄이다. 도구 이름은 서버 허용 목록이라 이 모양이다.
 	// 항목이 길어 잘렸을 때 맨 끝에 붙는 "… N건 생략"은 이 모양이 아니라 걸러진다.
 	private static final Pattern TOOL_NAME = Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)(?:\\s|$)");
@@ -123,40 +118,9 @@ public class DashboardService {
 
 	// ---- 환경 불일치 ----
 
+	// 문구는 IDE 패널과 같은 IssueTexts를 쓴다.
 	private List<String> issues(StudentSession s) {
-		String raw = s.getIssuesJson();
-		if (raw == null || raw.isBlank()) {
-			return List.of();
-		}
-		try {
-			List<Issue> parsed = json.readValue(raw, new TypeReference<List<Issue>>() {
-			});
-			return parsed.stream().map(DashboardService::readable).toList();
-		}
-		catch (RuntimeException e) {
-			log.warn("세션 {}의 점검 결과를 읽지 못했습니다: {}", s.getId(), e.getMessage());
-			return List.of(UNREADABLE_ISSUES);
-		}
-	}
-
-	static String readable(Issue i) {
-		String name = orUnknown(i.name());
-		if (i.type() == null) {
-			return name;
-		}
-		return switch (i.type()) {
-			case MISSING -> name + " 없음 (기준 " + orUnknown(i.expected()) + ")";
-			case VERSION_MISMATCH -> name + " 버전 다름 (" + orUnknown(i.actual()) + ", 기준 " + orUnknown(i.expected())
-					+ ")";
-			// 가상환경이 깨져 파이썬을 실행하지 못하면 점검이 actual에 "error"를 넣는다.
-			case PYTHON_MISMATCH -> "error".equals(i.actual()) ? "파이썬 실행 실패"
-					: "파이썬 버전 다름 (" + orUnknown(i.actual()) + ", 기준 " + orUnknown(i.expected()) + ")";
-			case IDE_DOWN -> "IDE 중단";
-		};
-	}
-
-	private static String orUnknown(String s) {
-		return s == null ? "알 수 없음" : s;
+		return IssueTexts.fromJson(json, s.getIssuesJson(), s.getId());
 	}
 
 	// ---- 로컬 설치 ----

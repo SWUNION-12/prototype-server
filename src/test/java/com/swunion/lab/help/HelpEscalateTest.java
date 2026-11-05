@@ -43,7 +43,7 @@ class HelpEscalateTest {
 		c = courses.save(c);
 		session = sessions.save(new StudentSession(c, "철수", "tok-escalate", "pw"));
 		var props = new LabProperties("i", "p", "m", 15, "http://localhost:8080", "127.0.0.1", Path.of("."), "b:1",
-				"t/course-", "swunion-test-s");
+				"t/course-", "swunion-test-s", "http://host.docker.internal:8080");
 		sessionService = SessionServices.create(sessions, courses, mock(DockerGateway.class), props, (port, t) -> true,
 				JsonMapper.builder().build());
 		help = new HelpService(helps, sessionService, mock(AgentTrigger.class));

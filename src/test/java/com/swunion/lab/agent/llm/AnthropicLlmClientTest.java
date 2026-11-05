@@ -42,7 +42,7 @@ class AnthropicLlmClientTest {
 
 	static AnthropicLlmClient build(RestClient.Builder builder, Map<String, String> env, String model) {
 		LabProperties props = new LabProperties("i", "p", model, 60, "http://x", "127.0.0.1", Path.of("./data"),
-				"b", "c", "swunion-s");
+				"b", "c", "swunion-s", "http://host.docker.internal:8080");
 		return new AnthropicLlmClient(builder.build(), new ApiKeyResolver(env, Path.of("build/no-such.env")), props);
 	}
 

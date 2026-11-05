@@ -14,6 +14,9 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 
 	Optional<StudentSession> findByToken(String token);
 
+	/** 컨테이너 키로 세션을 찾는다. 키는 256비트 무작위 값이라 DB 동등 비교로 충분하다. 호출자가 빈 값을 먼저 거른다. */
+	Optional<StudentSession> findByIdeKey(String ideKey);
+
 	List<StudentSession> findByCourse_StatusAndContainerIdIsNotNull(CourseStatus status);
 
 	/** 강사 대시보드가 수업의 학생을 한 번에 읽는다. */

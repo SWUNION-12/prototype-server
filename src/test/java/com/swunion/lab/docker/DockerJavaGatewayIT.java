@@ -90,6 +90,17 @@ class DockerJavaGatewayIT {
 	}
 
 	@Test
+	void everyContainerResolvesHostDockerInternal() {
+		String id = start();
+
+		// 데몬이 host-gateway 항목을 받아 컨테이너의 /etc/hosts에 풀어 넣는다(IDE 안 확장이 서버에 닿는 길).
+		assertThat(client.inspectContainerCmd(id).exec().getHostConfig().getExtraHosts())
+				.containsExactly("host.docker.internal:host-gateway");
+		assertThat(gw.exec(id, List.of("cat", "/etc/hosts"), Duration.ofSeconds(10)).stdout())
+				.containsPattern("(?m)^\\S+\\s+host\\.docker\\.internal\\s*$");
+	}
+
+	@Test
 	void execWorkDirExitCodeStderrAndTimeout() {
 		String id = start();
 		assertThat(gw.exec(id, List.of("pwd"), "/opt/lab", Duration.ofSeconds(10)).stdout().trim())
