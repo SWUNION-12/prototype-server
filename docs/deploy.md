@@ -21,7 +21,7 @@ Ubuntu 24.04 서버 한 대에 실습 서버를 올리는 방법이다. 설정 �
 - 로컬에 JDK 21 이상, Node 20.9 이상, pnpm, 이 저장소가 있다. 화면(`web/`)은 로컬에서 jar를 만들 때 함께 빌드된다. 서버에는 Node가 필요 없다.
   - `./gradlew build`와 `bootJar`도 화면을 빌드하므로 pnpm이 PATH에 있어야 한다. 없으면 "pnpm이 필요합니다"로 멈춘다. `test`는 pnpm 없이 돈다.
   - `web/package.json`이 pnpm 12.16.1로 고정돼 있어, 다른 버전의 pnpm이 깔려 있어도 처음 쓸 때 12.16.1로 알아서 바뀐다. 이때 네트워크가 한 번 필요하다.
-- 프로젝트 루트 `.env`에 `ANTHROPIC_API_KEY=<키>`가 있다.
+- 프로젝트 루트 `.env`에 `ANTHROPIC_API_KEY=<키>`가 있다. Bedrock으로 호출하면 필요 없다([Amazon Bedrock으로 Claude 호출하기](#amazon-bedrock으로-claude-호출하기)).
 
 ## 1. 서버 패키지
 
@@ -70,7 +70,25 @@ chmod 600 ~/swunion/.env ~/swunion/lab.env
 | `IDE_BIND_ADDRESS` | `127.0.0.1`. 학생 IDE 포트를 서버 밖에 열지 않는다. |
 | `IDE_URL_TEMPLATE` | `{base}/ide/{port}/`. 학생 IDE를 HTTPS 주소 아래 경로로 연다. |
 | `INSTRUCTOR_PASSWORD` | 강사 로그인 비밀번호. 강한 값으로 정한다. 학생 컨테이너가 서버에 닿으므로 기본값(`instructor`)을 쓰면 안 된다. |
+| `IDE_AUTH` | `proxy`. 운영에서는 이 값으로 둔다. 새 학생 IDE를 비밀번호 없이(`--auth none`) 띄우고, 누가 열 수 있는지는 Caddy가 앱에 물어 정한다. `proxy`인데 `IDE_BIND_ADDRESS`가 `127.0.0.1`이 아니면 서버가 시작하지 않는다. 값을 비우면 `password`(기본)라서 IDE마다 비밀번호가 붙고 Caddy 확인에만 기대지 않는다. 로컬·LAN 실습용이다. |
 | `CONTAINER_MEMORY_MB` | 학생 컨테이너 하나의 메모리 상한. 기본 800. |
+
+### Amazon Bedrock으로 Claude 호출하기
+
+서버가 EC2에서 돌면 Anthropic API 키 대신 인스턴스 역할로 Bedrock을 부를 수 있다. 이때는 서버에 `.env`(API 키 파일)를 올리지 않아도 된다.
+
+1. 인스턴스 역할에 사용할 모델에 대한 `bedrock:InvokeModel` 권한을 준다. `global.` 접두사 모델은 추론 프로필을 거치므로 프로필과 그 뒤의 기반 모델 ARN 모두 허용해야 한다. 계정에 허용되지 않은 모델은 AccessDenied가 난다.
+2. `lab.env`에서 아래 세 줄의 주석을 푼다(`deploy/lab.env.example`에 들어 있다).
+
+```sh
+LLM_PROVIDER=bedrock
+LLM_MODEL=global.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_REGION=ap-southeast-1
+```
+
+3. `sudo systemctl restart swunion-lab`.
+
+`LLM_PROVIDER`는 `anthropic`(기본) 또는 `bedrock`만 받고, 다른 값이면 서버가 시작하지 않는다. 자격 증명은 AWS 기본 체인(인스턴스 역할)에서 호출할 때 찾는다. 자격 증명이나 권한이 없으면 서버는 뜨지만 에이전트 실행이 "LLM 호출 실패"로 끝난다. 로컬 PC에는 AWS 자격 증명이 없으므로 로컬 실행은 `anthropic`을 그대로 쓴다.
 
 ## 4. 기본 이미지
 
@@ -111,18 +129,24 @@ sudo systemctl enable caddy && sudo systemctl restart caddy
 
 Caddy가 Let's Encrypt 인증서를 자동으로 받고 갱신한다. 도메인이 서버를 가리키고 80 포트가 열려 있어야 한다. `/ide/<포트>/`는 Docker가 고르는 호스트 포트 범위(32768~60999)만 받는다.
 
-IDE는 강사 화면과 같은 주소 아래에 있다. 그래서 `/ide/<포트>/` 요청에서는 이 앱의 쿠키(`JSESSIONID`, `XSRF-TOKEN`)를 떼고 학생 컨테이너로 넘긴다. code-server의 `code-server-session` 같은 다른 쿠키는 그대로 간다.
+`/ide/<포트>/` 요청마다 Caddy가 먼저 실습 서버의 `GET /api/ide-auth/<포트>`에 묻는다(`forward_auth`). 요청의 `LAB_STUDENT` 쿠키가 그 포트 학생의 것이면 204가 돌아와 IDE로 넘기고, 아니면 401을 브라우저에 그대로 돌려주고 IDE에는 보내지 않는다. 웹소켓 요청도 같은 확인을 거친다.
+
+IDE는 강사 화면과 같은 주소 아래에 있다. 그래서 확인을 통과한 요청에서도 이 앱의 쿠키(`JSESSIONID`, `XSRF-TOKEN`, `LAB_STUDENT`)를 떼고 학생 컨테이너로 넘긴다. code-server의 `code-server-session` 같은 다른 쿠키는 그대로 간다.
 
 ## 7. 확인
 
 - `https://your-name.duckdns.org/join`이 200, `/instructor`는 `/instructor/login?next=...`으로 302, `/instructor/login`이 200, `/api/courses`가 로그인 없이 401이다.
 - 바깥에서 `http://<서버>:8080`으로는 접속되지 않는다.
-- `/instructor/login`에서 강사로 로그인해 수업을 만든다. 학생은 `/join`에서 수업 코드, 이름, PIN으로 입장한다. 실습 화면 안에 IDE가 뜨고, 학생이 IDE 비밀번호를 한 번 붙여 넣어 로그인한다. IDE 왼쪽의 "실습 도우미"에 환경 상태 "정상"이 나온다.
+- `/instructor/login`에서 강사로 로그인해 수업을 만든다. 학생은 `/join`에서 수업 코드, 이름, PIN으로 입장한다. 실습 화면 안에 IDE가 뜨고, `IDE_AUTH=proxy`이면 IDE가 비밀번호 없이 바로 열린다. IDE 왼쪽의 "실습 도우미"에 환경 상태 "정상"이 나온다.
 - HTTPS에서만 생기는 조합을 본다. 브라우저 개발자 도구에서 확인한다.
   - IDE iframe이 같은 출처의 `/ide/<포트>/`로 뜬다(다른 포트의 주소가 아니다).
   - 그 iframe 안에서 로그인한 뒤 "실습 도우미" 패널이 흰 화면이 아니라 정상으로 그려진다.
   - 강사 로그인 응답의 `Set-Cookie`에서 `JSESSIONID`와 `XSRF-TOKEN`에 `Secure`가 붙어 있다.
   - `/ide/*` 요청의 `Cookie` 헤더에 `JSESSIONID`, `XSRF-TOKEN`이 없다(`code-server-session` 같은 다른 쿠키는 있다).
+- 학생 주소 보안은 브라우저 두 개로 본다.
+  - 학생 A가 입장한 `/lab` 주소를 다른 브라우저(또는 시크릿 창)에서 열면 실습 화면 대신 "다시 입장"이 나온다.
+  - 학생 B로 입장한 브라우저에서 학생 A의 `/ide/<포트>/`를 열면 401이다. 쿠키가 없는 브라우저도 401이다. B 자신의 IDE는 비밀번호 입력 없이 열린다.
+  - 서버 안에서 `curl -s -o /dev/null -w '%{http_code}' https://your-name.duckdns.org/ide/<포트>/`는 401이다.
 - 학생 컨테이너 안에서 메타데이터가 막혔는지 본다.
 
 ```sh
@@ -135,7 +159,9 @@ sg docker -c "docker exec -u coder $C curl -s -m 4 -o /dev/null -w '%{http_code}
 ## 코드를 바꾼 뒤 다시 배포
 
 - 서버나 화면(`web/`) 코드가 바뀌었으면: `./gradlew bootJar`로 jar를 만들어 올리고 `sudo systemctl restart swunion-lab`.
-- `deploy/Caddyfile`이 바뀌었으면 jar와 따로 Caddy 설정도 갱신한다. 빠뜨리면 강사 세션 쿠키가 학생 컨테이너로 넘어간다.
+- 학생 쿠키(`LAB_STUDENT`)를 처음 들이는 배포 뒤에는 기존 학생이 모두 수업 코드·이름·PIN으로 다시 입장한다. 그 전에 나간 학생 주소(`/lab?t=…`)와 설치 명령의 토큰은 받지 않는다. 학생 코드와 컨테이너는 그대로다.
+- `deploy/Caddyfile`이 바뀌었으면 jar와 따로 Caddy 설정도 갱신한다. 빠뜨리면 `/ide/*`에 Caddy 확인이 없어 `IDE_AUTH=proxy` 컨테이너가 누구에게나 열리고, 강사 세션 쿠키도 학생 컨테이너로 넘어간다. 순서는 Caddy가 먼저다: 아래처럼 Caddy를 갱신하고, 그다음 `lab.env`의 `IDE_AUTH=proxy`와 새 jar를 올려 다시 켠다. 옛 앱은 `/api/ide-auth`에 2xx를 주지 않으므로 그사이 IDE가 잠깐 막힐 뿐 열리지는 않는다. 거꾸로 하면 그사이 비밀번호 없는 IDE가 누구에게나 열린다.
+- `IDE_AUTH=proxy`는 값을 바꾼 뒤 새로 만드는 컨테이너부터 적용된다. 그 전에 만든 컨테이너는 IDE 비밀번호가 그대로 있고 학생 화면에도 비밀번호가 보인다. 이 컨테이너도 Caddy 확인은 똑같이 받는다. `~/swunion/lab.env`에 `IDE_AUTH=proxy`를 넣고 `sudo systemctl restart swunion-lab`을 해야 적용된다. 수업 중에 바꾸면 이미 입장한 학생은 비밀번호 방식으로 남으니, 수업 사이에 바꾼다. 거꾸로 `password`로 되돌리면, 비밀번호 없이 만든 컨테이너는 다음에 켤 때(재입장, 수업 재개, 강사 재시작) 같은 볼륨으로 다시 만들어 비밀번호를 붙인다.
 
   ```sh
   # 파일의 your-name.duckdns.org를 실제 도메인으로 바꾼 뒤
@@ -144,7 +170,7 @@ sg docker -c "docker exec -u coder $C curl -s -m 4 -o /dev/null -w '%{http_code}
   sudo systemctl reload caddy
   ```
 
-  `/ide/*`의 쿠키 제거는 Caddy 버전에 따라 다르게 읽힐 수 있다. 바꿀 값을 빈 문자열로 쓰면 Ubuntu 패키지의 Caddy 2.6.2는 치환 대신 `set`으로 읽어 학생 IDE 로그인이 풀린다. 그래서 규칙은 빈 값 대신 `swunion-stripped=1`로 바꾼다. `caddy version`을 확인하고, `caddy adapt --config /etc/caddy/Caddyfile`의 `reverse_proxy` 아래 `headers.request.replace.Cookie`에 `JSESSIONID`용과 `XSRF-TOKEN`용 `search_regexp`가 두 개 들어 있는지 본다. 7번 확인 절의 쿠키 항목으로 실제 요청도 확인한다.
+  `/ide/*`의 쿠키 제거는 Caddy 버전에 따라 다르게 읽힐 수 있다. 바꿀 값을 빈 문자열로 쓰면 Ubuntu 패키지의 Caddy 2.6.2는 치환 대신 `set`으로 읽어 학생 IDE 로그인이 풀린다. 그래서 규칙은 빈 값 대신 `swunion-stripped=1`로 바꾼다. `caddy version`을 확인하고, `caddy adapt --config /etc/caddy/Caddyfile`의 `reverse_proxy` 아래 `headers.request.replace.Cookie`에 `JSESSIONID`·`XSRF-TOKEN`·`LAB_STUDENT`를 함께 잡는 `search_regexp`가 두 개 들어 있는지 본다. `forward_auth`는 `handle_response`가 붙은 `reverse_proxy`로 풀려 나오므로 `/api/ide-auth/`가 들어간 항목도 있어야 한다. 7번 확인 절의 쿠키 항목으로 실제 요청도 확인한다.
 - `docker/lab-base`가 바뀌었으면: 폴더를 올리고 4번처럼 기본 이미지를 다시 빌드한다. 수업 이미지는 수업을 만들 때 굳어지므로, 새로 만드는 수업부터 적용된다.
 
 ## 서버 비우기
@@ -176,6 +202,8 @@ sudo systemctl start swunion-lab
 - 강사 로그인에는 시도 횟수 제한이 없다. 비밀번호를 길게 정한다.
 - 로그인 세션은 마지막 요청 뒤 8시간 유지된다. 대시보드를 열어 두면 3초마다 요청하므로 끊기지 않는다. 서버를 다시 켜면 다시 로그인한다.
 - 학생 IDE가 강사 화면과 같은 출처(`/ide/<포트>/`)에서 열린다. 학생이 자기 IDE에서 띄운 페이지는 강사 화면과 같은 출처에서 돈다. 강사는 로그인한 채로 학생 IDE 링크를 열지 않는다. Caddy가 이 앱의 쿠키를 IDE로 넘기지는 않지만, 근본 해결은 IDE를 별도 하위 도메인에서 내보내는 것이다.
+- 이미 열린 IDE 연결은 재입장·나가기 뒤에도 브라우저를 닫을 때까지 이어질 수 있다. Caddy는 IDE 연결을 열 때만 앱에 묻는다. 공용 PC에서는 나가기 뒤 브라우저를 닫는다.
+- 한 브라우저에는 학생 한 명만 입장한다. 학생 쿠키(`LAB_STUDENT`)가 브라우저에 하나라서, 같은 브라우저에서 다른 학생으로 입장하면 앞 학생의 쿠키가 바뀐다. 앞 학생 화면은 "다시 입장"이 되고 그 IDE는 401이 된다. 한 컴퓨터를 여러 학생이 나눠 쓰면 브라우저 프로필이나 시크릿 창을 따로 쓴다.
 - 서버를 두 대 이상 띄우면 안 된다. 수업과 세션 잠금이 서버 메모리에 있다.
 - 학생 컨테이너의 인터넷은 열려 있다. 추가 패키지 설치를 위해서다.
 - 컨테이너는 Docker 기본 격리만 쓴다. 실제 수업 전에는 gVisor 같은 강화된 격리를 검토한다.
