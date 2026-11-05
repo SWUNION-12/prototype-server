@@ -27,6 +27,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -167,6 +169,17 @@ class LocalControllerTest {
 		assertThat(li.getStatus()).isEqualTo(LocalStatus.OK);
 		assertThat(localInstalls.findBySessionCourseId(course.getId())).hasSize(1);
 		assertThat(sessions.findById(session.getId()).orElseThrow().isNeedsHelp()).isFalse();
+	}
+
+	@Test
+	void verifyFailWithManyPackagesKeepsReasonWithin50() throws Exception {
+		String failed = IntStream.range(0, 12).mapToObj(i -> "package" + i + ":ImportError").collect(Collectors.joining(","));
+		String text = "---SWUNION-VERIFY-BEGIN---\\nverify=fail\\npython=3.12.7\\npackages=0/12\\nfailed=" + failed
+				+ "\\n---SWUNION-VERIFY-END---";
+		mvc.perform(post("/api/s/" + token + "/local/verify").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"text\":\"" + text + "\"}")).andExpect(status().isOk());
+		String reason = sessions.findById(session.getId()).orElseThrow().getNeedsHelpReason();
+		assertThat(reason).hasSize(50).startsWith("로컬 설치 검증 실패: package0").endsWith("…");
 	}
 
 	@Test

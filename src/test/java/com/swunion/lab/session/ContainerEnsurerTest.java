@@ -221,7 +221,7 @@ class ContainerEnsurerTest {
 
 		ensurer.ensureRunning(session);
 
-		assertThat(fresh().getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six / 작업 공간 유실");
+		assertThat(fresh().getNeedsHelpReason()).isEqualTo("작업 공간 유실 / 재점검 실패: MISSING:six");
 	}
 
 	@Test

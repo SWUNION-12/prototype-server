@@ -70,24 +70,29 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	int updateNeedsHelp(@Param("id") long id, @Param("needsHelp") boolean needsHelp, @Param("reason") String reason);
 
 	/**
-	 * 강사 도움 필요를 켜고 이유를 덧붙인다. 비어 있으면 reason만, 이미 reason이 들어 있거나 덧붙이면 컬럼(4,000자)을
-	 * 넘는 길이(maxKeep 초과)면 그대로 둔다. 읽고 쓰는 사이에 에이전트가 이유를 바꿔도 잃지 않게 한 문장으로 한다.
+	 * 강사 도움 필요를 켜고 이유를 앞에 붙인다("새 이유 / 이전 이유"). 저장 값은 ReportText.MAX자 이내이고 새 이유는
+	 * 항상 온전히 남는다. 이전 이유는 room자 안에 들어가게 줄이고(넘으면 앞 room-1자 + "…"), 이미 새 이유가 들어
+	 * 있으면 그대로 둔다. 읽고 쓰는 사이에 에이전트가 이유를 바꿔도 잃지 않게 한 문장으로 한다.
 	 */
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update StudentSession s set s.needsHelp = true, s.needsHelpReason = case"
 			+ " when s.needsHelpReason is null or s.needsHelpReason = '' then :reason"
-			+ " when locate(:reason, s.needsHelpReason) > 0 or length(s.needsHelpReason) > :maxKeep"
-			+ " then s.needsHelpReason"
-			+ " else concat(s.needsHelpReason, ' / ', :reason) end where s.id = :id")
-	int appendNeedsHelpReason(@Param("id") long id, @Param("reason") String reason, @Param("maxKeep") int maxKeep);
+			+ " when locate(:reason, s.needsHelpReason) > 0 then s.needsHelpReason"
+			+ " when length(s.needsHelpReason) <= :room then concat(:reason, ' / ', s.needsHelpReason)"
+			+ " else concat(:reason, ' / ', substring(s.needsHelpReason, 1, :keep), '…') end where s.id = :id")
+	int prependNeedsHelpReason(@Param("id") long id, @Param("reason") String reason, @Param("room") int room,
+			@Param("keep") int keep);
 
-	/** StudentSession.needsHelpReason 컬럼 길이 */
-	int NEEDS_HELP_REASON_LENGTH = 4000;
+	/** 새 이유가 들어간 뒤 이전 이유에 남는 글자 수가 이보다 적으면 이전 이유는 버린다. */
+	int MIN_OLD_REASON_ROOM = 2;
 
-	/** appendNeedsHelpReason에 컬럼 길이에서 구분자(" / ")와 새 이유 길이를 뺀 maxKeep을 계산해 넘긴다. */
 	default int addNeedsHelpReason(long id, String reason) {
-		return appendNeedsHelpReason(id, reason, NEEDS_HELP_REASON_LENGTH - " / ".length() - reason.length());
+		int room = ReportText.MAX - " / ".length() - reason.length();
+		if (room < MIN_OLD_REASON_ROOM) {
+			return updateNeedsHelp(id, true, reason);
+		}
+		return prependNeedsHelpReason(id, reason, room, room - 1);
 	}
 
 	/** 에이전트가 강사에게 넘길 때. 같은 불일치로 다시 호출하지 않도록 서명을 같이 남긴다. */

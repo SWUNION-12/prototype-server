@@ -275,6 +275,39 @@ class SessionServiceTest {
 	}
 
 	@Test
+	void flagNeedsHelpStoresAtMost50CharsInBothOverloads() {
+		StudentSession s = join("ABC123", "철수");
+		service.flagNeedsHelp(s.getId(), "가".repeat(80));
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason()).isEqualTo("가".repeat(49) + "…");
+		service.flagNeedsHelp(s.getId(), "나".repeat(80), "SIG");
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason()).isEqualTo("나".repeat(49) + "…");
+		service.flagNeedsHelp(s.getId(), null);
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason()).isNull();
+	}
+
+	@Test
+	void addNeedsHelpReasonKeepsTheNewestReasonWholeWithin50() {
+		StudentSession s = join("ABC123", "철수");
+		// 비어 있으면 새 이유만.
+		service.addNeedsHelpReason(s.getId(), "학생 호출");
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason()).isEqualTo("학생 호출");
+		// 이미 들어 있으면 그대로.
+		service.addNeedsHelpReason(s.getId(), "학생 호출");
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason()).isEqualTo("학생 호출");
+		// 짧은 이전 이유는 온전히 뒤에 붙는다.
+		service.flagNeedsHelp(s.getId(), "재점검 실패: MISSING:six");
+		service.addNeedsHelpReason(s.getId(), "학생 호출");
+		assertThat(sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason())
+				.isEqualTo("학생 호출 / 재점검 실패: MISSING:six");
+		// 50자 이전 이유 + 새 이유: 50자 이내이고 새 이유가 맨 앞에 온전히 남는다.
+		service.flagNeedsHelp(s.getId(), "가".repeat(50));
+		service.addNeedsHelpReason(s.getId(), "학생 호출");
+		String r = sessions.findById(s.getId()).orElseThrow().getNeedsHelpReason();
+		assertThat(r).hasSize(50).startsWith("학생 호출 / ").endsWith("…");
+		assertThat(sessions.findById(s.getId()).orElseThrow().isNeedsHelp()).isTrue();
+	}
+
+	@Test
 	void agentWritesTouchOnlyTheirOwnColumns() {
 		StudentSession s = join("ABC123", "철수");
 		service.markRepairing(s.getId());

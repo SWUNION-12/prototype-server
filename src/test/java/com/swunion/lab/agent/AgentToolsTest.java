@@ -177,6 +177,38 @@ class AgentToolsTest {
 	}
 
 	@Test
+	void reportArgumentsAreAdvertisedAs50CharsAndLongValuesAreShortenedNotRejected() {
+		assertThat(AgentTools.specs()).filteredOn(t -> t.name().equals("finish") || t.name().equals("escalate_to_instructor"))
+				.allSatisfy(t -> {
+					@SuppressWarnings("unchecked")
+					Map<String, Map<String, Object>> props = (Map<String, Map<String, Object>>) t.inputSchema()
+							.get("properties");
+					Map<String, Object> text = props.get(t.name().equals("finish") ? "summary" : "reason");
+					assertThat(text.get("maxLength")).isEqualTo(50);
+					assertThat(text.get("description").toString()).contains("50자");
+					assertThat(t.description()).contains("50자");
+				});
+
+		ToolResult e = tools.execute(check, call("e", "escalate_to_instructor", Map.of("reason", "가".repeat(120))), state);
+		assertThat(e.isError()).isFalse();
+		assertThat(state.escalationReason).as("50자 제한은 저장 시점에 건다").isEqualTo("가".repeat(120));
+
+		ToolResult f = tools.execute(check,
+				call("f", "finish", Map.of("classification", "ENV", "summary", "나".repeat(120))), state);
+		assertThat(f.isError()).isFalse();
+		assertThat(state.summary).isEqualTo("나".repeat(49) + "…").hasSize(50);
+		assertThat(state.rejected).isEmpty();
+	}
+
+	@Test
+	void absurdlyLongSummaryIsStillRejected() {
+		ToolResult f = tools.execute(check,
+				call("f", "finish", Map.of("classification", "ENV", "summary", "나".repeat(501))), state);
+		assertThat(f.isError()).isTrue();
+		assertThat(state.finished).isFalse();
+	}
+
+	@Test
 	void finishRecordsClassificationAndBlocksLaterCalls() {
 		ToolResult f = tools.execute(check, call("f", "finish", Map.of("classification", "ENV", "summary", "복구함")),
 				state);

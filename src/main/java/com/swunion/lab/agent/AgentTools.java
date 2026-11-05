@@ -7,6 +7,7 @@ import com.swunion.lab.check.CheckResult;
 import com.swunion.lab.check.EnvironmentChecker;
 import com.swunion.lab.docker.DockerGateway;
 import com.swunion.lab.docker.ExecResult;
+import com.swunion.lab.session.ReportText;
 import com.swunion.lab.session.SessionService;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -41,11 +42,18 @@ public class AgentTools {
 	static final int OUTPUT_TAIL = 1500;
 	// AgentAction 컬럼 길이. 코드 블록 자리 안내 문구가 원문보다 길 수 있어 지운 뒤에 다시 자른다.
 	static final int MAX_EXPLANATION = 4000;
-	static final int MAX_SUMMARY = 2000;
 	private static final int LOG_PART = 300;
 
-	/** 인자 규칙. enumValues가 있으면 그 값만 허용. 모든 인자는 필수 문자열이다. */
-	private record Arg(String name, int maxLength, List<String> enumValues, String description) {
+	/**
+	 * 인자 규칙. enumValues가 있으면 그 값만 허용. 모든 인자는 필수 문자열이다.
+	 * maxLength는 이 길이를 넘으면 거부하는 한도이고, advertisedMax는 모델에게 알리는 길이다.
+	 * 대시보드 보고 칸용 인자는 거부하면 LLM 호출이 한 번 더 들어서, 넉넉한 한도로 받고 서버가 50자로 줄인다.
+	 */
+	private record Arg(String name, int maxLength, int advertisedMax, List<String> enumValues, String description) {
+
+		Arg(String name, int maxLength, List<String> enumValues, String description) {
+			this(name, maxLength, maxLength, enumValues, description);
+		}
 	}
 
 	private static final List<String> FINISH_CLASSES = List.of("ENV", "CODE", "OUT_OF_SCOPE");
@@ -65,11 +73,13 @@ public class AgentTools {
 				+ "고친 코드는 쓰지 않습니다. 코드 블록은 서버가 지웁니다. 도움 요청(HELP)일 때만 쓸 수 있습니다.",
 				new Arg("meaning", 800, null, "오류가 무슨 뜻인지. 한국어."),
 				new Arg("where_to_look", 400, null, "학생이 확인할 곳(파일, 줄, 변수 이름 등). 한국어."));
-		define("escalate_to_instructor", "강사 도움이 필요하다고 표시합니다. 스펙 밖 문제, 복구 실패, 원인 불명일 때 씁니다.",
-				new Arg("reason", 300, null, "강사에게 보일 짧은 이유. 한국어."));
-		define("finish", "실행을 끝냅니다. 마지막에 정확히 한 번 호출합니다.",
+		define("escalate_to_instructor", "강사 도움이 필요하다고 표시합니다. 스펙 밖 문제, 복구 실패, 원인 불명일 때 씁니다. "
+				+ "reason은 강사 대시보드에 그대로 보이므로 공백 포함 50자 이내 한 문장으로 씁니다.",
+				new Arg("reason", 300, ReportText.MAX, null, "강사에게 보일 이유. 한국어 한 문장, 공백 포함 50자 이내."));
+		define("finish", "실행을 끝냅니다. 마지막에 정확히 한 번 호출합니다. summary는 강사 대시보드에 그대로 보이므로 "
+				+ "공백 포함 50자 이내 한 문장으로 씁니다.",
 				new Arg("classification", 20, FINISH_CLASSES, "판단 유형"),
-				new Arg("summary", 500, null, "무엇을 판단하고 무엇을 했는지 짧은 요약. 한국어."));
+				new Arg("summary", 500, ReportText.MAX, null, "무엇을 판단하고 무엇을 했는지 요약. 한국어 한 문장, 공백 포함 50자 이내."));
 	}
 
 	private static void define(String name, String description, Arg... args) {
@@ -104,7 +114,7 @@ public class AgentTools {
 				p.put("enum", a.enumValues());
 			}
 			else {
-				p.put("maxLength", a.maxLength());
+				p.put("maxLength", a.advertisedMax());
 			}
 			p.put("description", a.description());
 			props.put(a.name(), p);
@@ -246,13 +256,15 @@ public class AgentTools {
 	}
 
 	private ToolResult escalate(ToolCall call, RunState state, Map<String, String> args) {
+		// 50자 제한은 강사 도움 표시를 저장하는 곳(SessionService.flagNeedsHelp)에서 건다. 여기서는 문장을 그대로 두어
+		// AgentAction.escalationReason(펼친 상세)에 전체가 남게 한다.
 		state.escalationReason = args.get("reason").strip();
 		return logged(call, state, args, "강사 도움 필요로 기록합니다.", false);
 	}
 
 	private ToolResult finish(ToolCall call, RunState state, Map<String, String> args) {
 		state.classification = Classification.valueOf(args.get("classification"));
-		state.summary = AgentContext.truncate(CodeBlockStripper.strip(args.get("summary").strip()), MAX_SUMMARY);
+		state.summary = ReportText.shorten(CodeBlockStripper.strip(args.get("summary").strip()));
 		state.finished = true;
 		return logged(call, state, args, "실행을 끝냅니다.", false);
 	}

@@ -378,18 +378,19 @@ public class SessionService {
 	// 아래 쓰기는 전부 자기 컬럼만 갱신한다. 점검·에이전트·학생 요청이 동시에 같은 세션을 쓰므로
 	// 엔티티 전체를 save하면 다른 쪽이 바꾼 값을 덮어쓴다.
 
+	// 이유는 대시보드 "AI 조치 보고" 칸에 그대로 보여서 저장할 때 50자로 줄인다.
 	public void flagNeedsHelp(long sessionId, String reason) {
-		sessions.updateNeedsHelp(sessionId, true, reason);
+		sessions.updateNeedsHelp(sessionId, true, ReportText.shorten(reason));
 	}
 
 	/** 에이전트가 강사에게 넘길 때. signature가 같은 불일치는 점검이 다시 에이전트로 보내지 않는다. */
 	public void flagNeedsHelp(long sessionId, String reason, String signature) {
-		sessions.updateEscalation(sessionId, reason, signature);
+		sessions.updateEscalation(sessionId, ReportText.shorten(reason), signature);
 	}
 
-	/** 이미 있는 이유(예: 에이전트의 "재점검 실패: …")는 지우지 않고 " / reason"으로 덧붙인다. */
+	/** 새 이유를 앞에 두고 이미 있는 이유는 50자 안에서 줄여 뒤에 붙인다("새 이유 / 이전 이유…"). */
 	public void addNeedsHelpReason(long sessionId, String reason) {
-		sessions.addNeedsHelpReason(sessionId, reason);
+		sessions.addNeedsHelpReason(sessionId, ReportText.shorten(reason));
 	}
 
 	public void clearNeedsHelp(long sessionId) {

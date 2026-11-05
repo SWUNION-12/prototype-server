@@ -12,6 +12,7 @@ import com.swunion.lab.agent.llm.LlmTypes.UserText;
 import com.swunion.lab.check.CheckResult;
 import com.swunion.lab.check.EnvironmentChecker;
 import com.swunion.lab.course.Course;
+import com.swunion.lab.session.ReportText;
 import com.swunion.lab.session.SessionService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -80,10 +81,10 @@ public class AgentRunner {
 			5. HELP인데 점검 결과의 issues가 비어 있으면 restore_packages를 호출하지 않습니다.
 			6. issues가 있으면 표에 따라 restore_packages나 restart_ide로 복구합니다. 복구 결과를 본 다음에 finish를 호출하세요. 복구 도구가 실패를 돌려주면 같은 복구를 반복하지 말고 escalate_to_instructor로 넘깁니다.
 			7. 스펙 밖이거나 원인을 모르겠으면 escalate_to_instructor를 씁니다. 복구가 성공했으면 강사를 부르지 않습니다.
-			8. 마지막에 finish를 정확히 한 번 호출합니다. classification(ENV, CODE, OUT_OF_SCOPE)과 짧은 요약을 넣습니다. finish 뒤의 호출은 실행되지 않습니다.
+			8. 마지막에 finish를 정확히 한 번 호출합니다. classification(ENV, CODE, OUT_OF_SCOPE)과 요약을 넣습니다. 요약은 한국어 한 문장, 공백 포함 50자 이내로 씁니다. finish 뒤의 호출은 실행되지 않습니다.
 			9. 한 실행에서 응답은 최대 6번입니다. 서로 결과를 기다릴 필요가 없는 도구는 한 응답에서 함께 호출하세요.
 			10. 해결 여부는 서버가 실행 끝에 다시 점검해 정합니다. 고쳤다고 주장할 필요는 없습니다.
-			11. 설명, 이유, 요약은 한국어로 짧게 씁니다.
+			11. 설명은 한국어로 짧게 씁니다. escalate_to_instructor의 reason과 finish의 summary는 강사 대시보드에 그대로 보이므로 한국어 한 문장, 공백 포함 50자 이내로 씁니다.
 			""";
 
 	private final LlmClient llm;
@@ -136,7 +137,11 @@ public class AgentRunner {
 			log.error("재점검 실패 session={}", sid, e);
 		}
 
+		// 대시보드 칸은 앞 50자만 보인다. 사람이 읽을 모델의 이유를 앞에 두고 서명 같은 기계 문구는 뒤로 보낸다.
 		List<String> reasons = new ArrayList<>();
+		if (state.escalationReason != null) {
+			reasons.add(state.escalationReason);
+		}
 		if (recheck == null) {
 			reasons.add("재점검 실패: 점검 오류");
 		}
@@ -147,9 +152,6 @@ public class AgentRunner {
 			reasons.add(LLM_FAILED);
 		}
 		reasons.addAll(serverNotes);
-		if (state.escalationReason != null) {
-			reasons.add(state.escalationReason);
-		}
 		Outcome outcome;
 		if (!reasons.isEmpty()) {
 			outcome = Outcome.ESCALATED;
@@ -218,7 +220,7 @@ public class AgentRunner {
 		AgentAction failed = new AgentAction(ctx.session(), ctx.trigger(), Instant.now());
 		failed.setClassification(Classification.UNKNOWN);
 		failed.setOutcome(Outcome.ESCALATED);
-		failed.setSummary(RUN_FAILED);
+		failed.setSummary(ReportText.shorten(RUN_FAILED));
 		failed.setEscalationReason(reason);
 		failed.setToolLogJson("[]");
 		failed.setRejectedJson("[]");
@@ -325,16 +327,17 @@ public class AgentRunner {
 	}
 
 	private String summary(RunState state) {
+		// 대시보드 "AI 조치 보고" 칸에 보이므로 대체 문구도 같은 50자 규칙을 거친다.
 		if (state.summary != null) {
-			return state.summary;
+			return ReportText.shorten(state.summary);
 		}
 		if (state.llmFailed) {
-			return LLM_FAILED;
+			return ReportText.shorten(LLM_FAILED);
 		}
 		if (state.llmCalls >= MAX_LLM_CALLS) {
-			return "LLM 호출 한도(" + MAX_LLM_CALLS + "회)에 도달해 끝냈습니다.";
+			return ReportText.shorten("LLM 호출 한도(" + MAX_LLM_CALLS + "회)에 도달해 끝냈습니다.");
 		}
-		return "모델이 finish 없이 끝냈습니다.";
+		return ReportText.shorten("모델이 finish 없이 끝냈습니다.");
 	}
 
 	String context(AgentContext ctx) {

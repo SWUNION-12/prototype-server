@@ -60,12 +60,12 @@ class HelpEscalateTest {
 		help.escalate("tok-escalate");
 
 		assertThat(fresh().isNeedsHelp()).isTrue();
-		assertThat(fresh().getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six / 학생 호출");
+		assertThat(fresh().getNeedsHelpReason()).isEqualTo("학생 호출 / 재점검 실패: MISSING:six");
 		assertThat(fresh().getLastEscalatedSignature()).isEqualTo("MISSING:six");
 
 		// 여러 번 눌러도 같은 말을 덧붙이지 않는다.
 		help.escalate("tok-escalate");
-		assertThat(fresh().getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six / 학생 호출");
+		assertThat(fresh().getNeedsHelpReason()).isEqualTo("학생 호출 / 재점검 실패: MISSING:six");
 	}
 
 	@Test

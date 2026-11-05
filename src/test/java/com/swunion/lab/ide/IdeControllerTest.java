@@ -355,7 +355,7 @@ class IdeControllerTest {
 		escalate(a.key()).andExpect(status().isNoContent()).andExpect(content().string(""));
 
 		assertThat(fresh(a).isNeedsHelp()).isTrue();
-		assertThat(fresh(a).getNeedsHelpReason()).isEqualTo("재점검 실패: MISSING:six / 학생 호출");
+		assertThat(fresh(a).getNeedsHelpReason()).isEqualTo("학생 호출 / 재점검 실패: MISSING:six");
 		readStatus(a.key()).andExpect(jsonPath("$.needsHelp").value(true))
 				.andExpect(jsonPath("$.latestHelp.escalated").value(true));
 	}

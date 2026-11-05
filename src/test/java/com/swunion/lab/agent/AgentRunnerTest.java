@@ -318,6 +318,61 @@ class AgentRunnerTest {
 	}
 
 	@Test
+	void longFinishSummaryIsShortenedTo50WithoutRejection() {
+		checker.rechecks.add(OK);
+		llm.then(calls(call("t1", "restore_packages", Map.of())), finish("t2", "ENV", "가".repeat(120)));
+
+		AgentAction a = runner.run(checkCtx(MISSING_SIX));
+
+		assertThat(a.getSummary()).isEqualTo("가".repeat(49) + "…").hasSize(50);
+		assertThat(rejected(a)).isEmpty();
+		assertThat(llm.sent).as("거부로 LLM 호출이 늘지 않는다").hasSize(2);
+	}
+
+	@Test
+	void longEscalateReasonBecomesA50CharNeedsHelpReason() {
+		checker.rechecks.add(OK);
+		llm.then(calls(call("t1", "escalate_to_instructor", Map.of("reason", "나".repeat(120)))),
+				finish("t2", "OUT_OF_SCOPE", "범위 밖"));
+
+		AgentAction a = runner.run(helpCtx("노트북 와이파이가 안 돼요"));
+
+		assertThat(a.getOutcome()).isEqualTo(Outcome.ESCALATED);
+		assertThat(rejected(a)).isEmpty();
+		assertThat(a.getEscalationReason()).as("펼친 상세에는 전체 문장").isEqualTo("나".repeat(120));
+		assertThat(fresh().getNeedsHelpReason()).isEqualTo("나".repeat(49) + "…").hasSize(50);
+	}
+
+	@Test
+	void escalateReasonComesFirstEvenWhenRecheckStillMismatches() {
+		checker.rechecks.add(MISSING_SIX);
+		llm.then(calls(call("t1", "escalate_to_instructor", Map.of("reason", "패키지 복구가 되지 않습니다"))),
+				finish("t2", "ENV", "복구 실패"));
+
+		AgentAction a = runner.run(checkCtx(MISSING_SIX));
+
+		assertThat(a.getOutcome()).isEqualTo(Outcome.ESCALATED);
+		assertThat(fresh().getNeedsHelpReason()).startsWith("패키지 복구가 되지 않습니다").contains("MISSING:six")
+				.hasSizeLessThanOrEqualTo(50);
+		assertThat(a.getEscalationReason()).startsWith("패키지 복구가 되지 않습니다");
+	}
+
+	@Test
+	void promptTellsTheModelTheFiftyCharLimit() {
+		assertThat(AgentRunner.SYSTEM_PROMPT).contains("공백 포함 50자 이내");
+	}
+
+	@Test
+	void fallbackSummaryAndFailureReasonAreAtMost50() {
+		checker.rechecks.add(OK);
+		llm.then(new LlmResponse("끝", List.of(), "end_turn"));
+		assertThat(runner.run(checkCtx(OK)).getSummary()).hasSizeLessThanOrEqualTo(50);
+
+		runner.reportFailure(helpCtx("IndexError"), "x".repeat(300));
+		assertThat(fresh().getNeedsHelpReason()).hasSize(50).startsWith("에이전트 실행 실패 / ").endsWith("…");
+	}
+
+	@Test
 	void oversizedExplanationIsTruncatedAndStillSaved() {
 		checker.rechecks.add(OK);
 		// 줄바꿈이 든 백틱 짝은 14자짜리 안내 문구로 바뀌어 원문보다 길어진다
@@ -329,7 +384,7 @@ class AgentRunnerTest {
 		assertThat(a.getId()).as("저장됨").isNotNull();
 		assertThat(a.getOutcome()).isEqualTo(Outcome.EXPLAINED);
 		assertThat(a.getExplanation()).hasSizeLessThanOrEqualTo(4000);
-		assertThat(a.getSummary()).hasSizeLessThanOrEqualTo(2000);
+		assertThat(a.getSummary()).hasSizeLessThanOrEqualTo(50);
 		assertThat(actions.count()).isEqualTo(1);
 	}
 
