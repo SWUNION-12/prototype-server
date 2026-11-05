@@ -1,0 +1,112 @@
+// 서버 응답 타입. API_CONTRACT.md와 같이 고친다.
+
+export type CourseStatus = "LOCKING" | "BUILDING" | "READY" | "FAILED" | "ENDED";
+export type EnvStatus = "UNKNOWN" | "OK" | "MISMATCH" | "REPAIRING";
+export type HelpStatus = "PROCESSING" | "EXPLAINED" | "RESOLVED" | "ESCALATED" | "NO_ACTION";
+export type Classification = "ENV" | "CODE" | "OUT_OF_SCOPE" | "UNKNOWN";
+export type LocalStatus = "NONE" | "DIAGNOSED" | "OK" | "FAIL";
+export type Os = "macos" | "windows";
+
+export type Course = {
+  id: number;
+  name: string;
+  pythonVersion: string;
+  packages: string[];
+  status: CourseStatus;
+  errorSummary: string | null;
+  entryCode: string | null;
+  createdAt: string | null;
+  studentCount: number;
+  capacity: number | null;
+};
+
+export type LocalView = {
+  status: LocalStatus;
+  os: string | null;
+  arch: string | null;
+  python: string | null;
+  failed: string[];
+};
+
+export type ActionView = {
+  at: string;
+  trigger: string;
+  classification: Classification | null;
+  tools: string[];
+  outcome: string | null;
+  summary: string | null;
+};
+
+export type StudentRow = {
+  sessionId: number;
+  name: string;
+  containerRunning: boolean;
+  ideConnected: boolean;
+  lastSeenAt: string | null;
+  envStatus: EnvStatus | null;
+  issues: string[];
+  extras: string[];
+  local: LocalView;
+  needsHelp: boolean;
+  needsHelpReason: string | null;
+  recentActions: ActionView[];
+  startupMillis: number | null;
+  pin: string | null;
+};
+
+export type ErrorCount = { errorType: string; count: number; students: string[] };
+
+export type Dashboard = {
+  course: Pick<
+    Course,
+    "id" | "name" | "pythonVersion" | "packages" | "status" | "entryCode" | "errorSummary" | "capacity"
+  >;
+  students: StudentRow[];
+  repeatedErrors: ErrorCount[];
+  repeatedErrorsNote: string;
+};
+
+export type LatestHelp = {
+  id: number;
+  status: HelpStatus;
+  errorType: string | null;
+  classification?: Classification | null;
+  explanation: string | null;
+  escalated: boolean;
+  createdAt: string;
+};
+
+export type EnvIssue = {
+  type: "MISSING" | "VERSION_MISMATCH" | "PYTHON_MISMATCH" | "IDE_DOWN";
+  name: string | null;
+  expected: string | null;
+  actual: string | null;
+};
+
+export type Me = {
+  name: string;
+  courseName: string;
+  courseStatus?: CourseStatus;
+  ideUrl: string;
+  idePassword: string;
+  envStatus: EnvStatus;
+  issues: EnvIssue[];
+  needsHelp: boolean;
+  latestHelp: LatestHelp | null;
+};
+
+export type InstallInfo = {
+  diagnoseCommand: string;
+  installCommand: string;
+  scriptUrl: string;
+  zipUrl: string;
+};
+
+export type VerifyResult = {
+  ok: boolean;
+  python: string | null;
+  passed: number | null;
+  total: number | null;
+  failed: string[];
+  message: string;
+};

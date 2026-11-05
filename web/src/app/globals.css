@@ -1,0 +1,293 @@
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+
+/* Figtree에는 한글이 없다. 테마 변수를 Noto Sans KR까지 이어 준다. 계층 밖에 두어 테마 계층을 이긴다. */
+[data-astryx-theme] {
+  --font-family-body: Figtree, var(--font-noto-kr), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-heading: Figtree, var(--font-noto-kr), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+.app-root {
+  min-height: 100dvh;
+  background: var(--color-background-body);
+}
+
+/* 상단 바 */
+.app-header {
+  flex: none;
+  height: 56px;
+  padding-inline: var(--spacing-8);
+  display: flex;
+  align-items: center;
+  background: var(--color-background-card);
+  border-block-end: 1px solid var(--color-border);
+}
+
+/* 강사 화면 본문 폭 */
+.page {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: var(--spacing-12) var(--spacing-8);
+  box-sizing: border-box;
+}
+.page--detail {
+  padding-block: var(--spacing-8) var(--spacing-16, 4rem);
+}
+.page--narrow {
+  max-width: 720px;
+}
+
+.mono {
+  font-family: var(--font-family-code);
+}
+.pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 시안의 상태 뱃지는 muted 단계다. Astryx 기본 success/warning/error/info는 진한 색이라 맞춘다. */
+.astryx-badge[data-variant="success"] {
+  background: var(--color-success-muted);
+  color: var(--color-on-success-muted);
+}
+.astryx-badge[data-variant="warning"] {
+  background: var(--color-warning-muted);
+  color: var(--color-on-warning-muted);
+}
+.astryx-badge[data-variant="error"] {
+  background: var(--color-error-muted);
+  color: var(--color-on-error-muted);
+}
+.astryx-badge[data-variant="info"] {
+  background: var(--color-info-muted);
+  color: var(--color-on-info-muted);
+}
+
+/* 오류 요약 */
+.error-summary {
+  margin: 0;
+  padding: var(--spacing-3);
+  background: var(--color-background-muted);
+  border-radius: var(--radius-2, 6px);
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-sm);
+  line-height: 1.6667;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text-primary);
+}
+
+/* 환경 준비 단계 */
+.provision-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-2);
+}
+.provision-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* Python 버전 목록 */
+.version-scroll {
+  height: 420px;
+  overflow-y: auto;
+}
+.version-group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 32px;
+  padding-inline: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--color-background-muted) 40%, var(--color-background-card));
+  border-block-end: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.version-row {
+  height: 40px;
+  padding-inline: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  cursor: pointer;
+  border-block-end: 1px solid var(--color-border);
+  font-family: var(--font-family-code);
+}
+.version-row[data-selected="true"] {
+  background: var(--color-overlay-hover);
+  font-weight: 600;
+}
+.version-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+/* 의존성 2단 */
+.deps {
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 340px;
+}
+.deps-main {
+  flex: 999 1 320px;
+  min-width: 0;
+  padding: var(--spacing-6);
+}
+.deps-list label {
+  font-family: var(--font-family-code);
+}
+.deps-side {
+  flex: 1 1 240px;
+  padding: var(--spacing-6);
+  background: color-mix(in srgb, var(--color-background-muted) 40%, var(--color-background-card));
+  border-inline-start: 1px solid var(--color-border);
+}
+
+/* 학생 표 */
+.table-scroll {
+  overflow-x: auto;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-3, 12px);
+}
+.table-scroll table {
+  min-width: 1040px;
+}
+/* 시안: 본문 16px, 보조 14px, 행 위아래 여백 24px */
+.table-scroll tbody {
+  --text-body-size: 1rem;
+  --text-supporting-size: 0.875rem;
+  --text-label-size: 0.875rem;
+}
+.table-scroll tbody td {
+  padding-block: var(--spacing-6);
+}
+.table-scroll tbody .astryx-badge {
+  font-size: 0.875rem;
+}
+.astryx-table-row:has([data-needs-help]) {
+  background: color-mix(in srgb, var(--color-error-muted) 18%, var(--color-background-card));
+}
+
+/* 디스코드 스포일러처럼 눌러야 보이는 PIN */
+.pin {
+  height: 32px;
+  padding-inline: var(--spacing-3);
+  border: 0;
+  border-radius: var(--radius-2, 6px);
+  font-family: var(--font-family-code);
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+}
+.pin[aria-pressed="false"] {
+  background: var(--color-accent);
+  color: var(--color-accent);
+  user-select: none;
+}
+.pin[aria-pressed="true"] {
+  background: var(--color-neutral);
+  color: var(--color-text-primary);
+}
+
+/* 학생 실습 화면 */
+.lab {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background-body);
+}
+.lab-header {
+  flex: none;
+  min-height: 56px;
+  padding-inline: var(--spacing-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  background: var(--color-background-card);
+  border-block-end: 1px solid var(--color-border);
+}
+.lab-header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border-emphasized);
+}
+.lab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.lab-ide {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: #1f1f1f;
+}
+.lab-ide iframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.lab-panel {
+  width: 400px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background-card);
+  border-inline-start: 1px solid var(--color-border);
+}
+.lab-panel-header {
+  flex: none;
+  height: 56px;
+  padding-inline: var(--spacing-5) var(--spacing-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-block-end: 1px solid var(--color-border);
+}
+.lab-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-5);
+}
+.look-here {
+  padding: var(--spacing-3);
+  background: var(--color-background-muted);
+  border-radius: var(--radius-3, 10px);
+}
+.lab-panel textarea {
+  font-family: var(--font-family-code);
+}
+.auto-login {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .lab-panel {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    z-index: 10;
+  }
+}
