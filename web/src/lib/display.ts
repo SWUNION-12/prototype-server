@@ -39,7 +39,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
 export const OUTCOME_LABEL: Record<string, string> = {
   RESOLVED: "해결",
   EXPLAINED: "설명",
-  ESCALATED: "강사 전달",
+  ESCALATED: "선생님 전달",
   NO_ACTION: "조치 없음",
 };
 

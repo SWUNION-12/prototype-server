@@ -13,7 +13,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: SERVICE_NAME,
-  description: "강사가 정한 파이썬 환경을 클라우드와 학생 PC에 같은 버전으로 제공하는 실습 지원 서비스",
+  description: "선생님이 정한 파이썬 환경을 클라우드와 학생 PC에 같은 버전으로 제공하는 실습 지원 서비스",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

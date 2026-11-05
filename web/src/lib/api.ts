@@ -111,7 +111,7 @@ function instructor<T>(method: string, url: string, body?: unknown): Promise<T> 
       moveToLogin();
       throw new ApiError(
         401,
-        "강사 로그인이 필요합니다. 로그인 화면으로 이동합니다. 이동하지 않으면 페이지를 새로고침해 주세요.",
+        "선생님 로그인이 필요합니다. 로그인 화면으로 이동합니다. 이동하지 않으면 페이지를 새로고침해 주세요.",
       );
     }
     throw e;

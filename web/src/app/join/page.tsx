@@ -107,6 +107,7 @@ function InfoStep({ code, onBack }: { code: string; onBack: () => void }) {
         id="student-name"
         className="field"
         autoComplete="name"
+        maxLength={30}
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
