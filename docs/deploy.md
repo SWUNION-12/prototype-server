@@ -19,6 +19,8 @@ Ubuntu 24.04 서버 한 대에 실습 서버를 올리는 방법이다. 설정 �
 - 서버에 SSH로 접속할 수 있다. 보안 그룹에서 80, 443이 열려 있다.
 - 도메인이 있다. 없으면 [DuckDNS](https://www.duckdns.org)에서 서브도메인을 만들고 서버 공인 IP를 넣는다. 아래에서는 `your-name.duckdns.org`로 쓴다.
 - 로컬에 JDK 21 이상, Node 20.9 이상, pnpm, 이 저장소가 있다. 화면(`web/`)은 로컬에서 jar를 만들 때 함께 빌드된다. 서버에는 Node가 필요 없다.
+  - `./gradlew build`와 `bootJar`도 화면을 빌드하므로 pnpm이 PATH에 있어야 한다. 없으면 "pnpm이 필요합니다"로 멈춘다. `test`는 pnpm 없이 돈다.
+  - `web/package.json`이 pnpm 12.16.1로 고정돼 있어, 다른 버전의 pnpm이 깔려 있어도 처음 쓸 때 12.16.1로 알아서 바뀐다. 이때 네트워크가 한 번 필요하다.
 - 프로젝트 루트 `.env`에 `ANTHROPIC_API_KEY=<키>`가 있다.
 
 ## 1. 서버 패키지
