@@ -21,6 +21,13 @@ repositories {
 	mavenCentral()
 }
 
+// AWS SDK v2는 모듈이 많아 BOM으로 버전을 맞춘다. 쓰는 모듈은 bedrockruntime 하나다.
+dependencyManagement {
+	imports {
+		mavenBom 'software.amazon.awssdk:bom:2.57.2'
+	}
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -30,6 +37,12 @@ dependencies {
 	implementation 'com.github.docker-java:docker-java-core:3.5.1'
 	implementation 'com.github.docker-java:docker-java-transport-httpclient5:3.5.1'
 	implementation 'org.apache.commons:commons-compress:1.28.0'
+	// Bedrock으로 Claude를 부른다. jar를 줄이려고 기본 HTTP 클라이언트(apache, netty)는 빼고 URL 연결 클라이언트 하나만 쓴다.
+	implementation('software.amazon.awssdk:bedrockruntime') {
+		exclude group: 'software.amazon.awssdk', module: 'apache-client'
+		exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+	}
+	implementation 'software.amazon.awssdk:url-connection-client'
 	runtimeOnly 'com.h2database:h2'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
