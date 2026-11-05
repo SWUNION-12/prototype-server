@@ -31,16 +31,18 @@ public class CourseService {
 	private final JsonMapper json;
 	private final SessionRepository sessions;
 	private final DockerGateway docker;
+	private final CourseLocks locks;
 
 	public CourseService(CourseRepository repo, CourseProvisioner provisioner,
 			@Qualifier("courseExecutor") TaskExecutor executor, JsonMapper json, SessionRepository sessions,
-			DockerGateway docker) {
+			DockerGateway docker, CourseLocks locks) {
 		this.repo = repo;
 		this.provisioner = provisioner;
 		this.executor = executor;
 		this.json = json;
 		this.sessions = sessions;
 		this.docker = docker;
+		this.locks = locks;
 	}
 
 	/** 검증은 동기로 하고(실패하면 InvalidSpecException), 락과 빌드는 백그라운드로 넘긴다. */
@@ -92,11 +94,21 @@ public class CourseService {
 	 * READY일 때만 바꾸는 조건부 갱신이라 아직 발급 중인 수업을 덮어쓰지 않는다.
 	 * 이미 ENDED면 멈추기만 다시 한다. 첫 종료가 못 멈췄거나 그 뒤 되살아난 컨테이너를 강사가 다시 멈출 수 있어야 한다.
 	 * 트랜잭션을 잡지 않는다: docker stop이 컨테이너마다 몇 초 걸린다.
+	 * 같은 수업의 재개·삭제와 겹치지 않게 수업 잠금 안에서 돈다. 재개가 켜는 중인 컨테이너를 멈추거나, 지워지는 수업을
+	 * 종료하지 않으려는 것이다.
 	 *
 	 * @return 수업이 없으면 null
-	 * @throws CourseStateException READY도 ENDED도 아닌 수업(발급 중이거나 실패)
+	 * @throws CourseStateException READY도 ENDED도 아닌 수업(발급 중이거나 실패), 또는 같은 수업의 다른 작업이 진행 중
 	 */
 	public EndResult end(long id) {
+		// 없는 id로는 잠금을 만들지 않는다. 엔티티를 읽지 않는 확인이라 잠금 안에서 다시 읽는 값이 낡지 않는다.
+		if (!repo.existsById(id)) {
+			return null;
+		}
+		return locks.run(id, () -> endLocked(id));
+	}
+
+	private EndResult endLocked(long id) {
 		Course course = repo.findById(id).orElse(null);
 		if (course == null) {
 			return null;

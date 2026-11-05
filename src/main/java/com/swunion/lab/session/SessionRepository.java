@@ -179,4 +179,10 @@ public interface SessionRepository extends JpaRepository<StudentSession, Long> {
 	/** 방금 기록한 실패 횟수. 엔티티 전체(점검 결과 JSON 등)를 읽지 않으려고 한 컬럼만 읽는다. */
 	@Query("select s.failedPinAttempts from StudentSession s where s.id = :id")
 	Optional<Integer> findFailedPinAttempts(@Param("id") long id);
+
+	/** 수업 삭제(LifecycleRows). 하위 표의 행을 먼저 지운 뒤에 부른다(외래 키). */
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from StudentSession s where s.course.id = :courseId")
+	int deleteByCourseId(@Param("courseId") long courseId);
 }

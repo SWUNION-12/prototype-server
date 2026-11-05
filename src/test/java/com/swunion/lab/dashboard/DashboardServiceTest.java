@@ -19,6 +19,7 @@ import com.swunion.lab.check.Issue;
 import com.swunion.lab.check.IssueType;
 import com.swunion.lab.config.LabProperties;
 import com.swunion.lab.course.Course;
+import com.swunion.lab.course.CourseLocks;
 import com.swunion.lab.course.CourseProvisioner;
 import com.swunion.lab.course.CourseRepository;
 import com.swunion.lab.course.CourseService;
@@ -339,7 +340,7 @@ class DashboardServiceTest {
 
 	private CourseService courseService() {
 		return new CourseService(courses, mock(CourseProvisioner.class), r -> {
-		}, json, sessions, docker);
+		}, json, sessions, docker, new CourseLocks());
 	}
 
 	private StudentSession withContainer(String name, String containerId) {

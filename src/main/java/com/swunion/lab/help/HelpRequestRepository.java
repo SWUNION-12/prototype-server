@@ -37,4 +37,17 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("update HelpRequest h set h.escalated = true where h.id = :id")
 	int markEscalated(@Param("id") long id);
+
+	// 학생·수업 삭제(LifecycleRows)가 세션 행보다 먼저 부른다(외래 키).
+
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from HelpRequest h where h.session.id = :sessionId")
+	int deleteBySessionId(@Param("sessionId") long sessionId);
+
+	@Transactional
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from HelpRequest h where h.session.id in"
+			+ " (select s.id from StudentSession s where s.course.id = :courseId)")
+	int deleteByCourseId(@Param("courseId") long courseId);
 }

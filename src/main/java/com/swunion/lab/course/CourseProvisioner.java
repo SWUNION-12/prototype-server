@@ -44,8 +44,18 @@ public class CourseProvisioner {
 		this.json = json;
 	}
 
+	/** 수업 작업 폴더들이 모이는 곳. 수업 삭제는 이 바로 아래의 자기 폴더만 지운다. */
+	public static Path coursesRoot(Path dataDir) {
+		return dataDir.resolve("courses");
+	}
+
+	/** 수업 작업 폴더. 발급이 쓰고 수업 삭제가 지우므로 두 쪽이 같은 규칙을 쓰게 여기 한 곳에 둔다. */
+	public static Path courseDir(Path dataDir, long id) {
+		return coursesRoot(dataDir).resolve(String.valueOf(id));
+	}
+
 	Path courseDir(long id) {
-		return props.dataDir().resolve("courses").resolve(String.valueOf(id));
+		return courseDir(props.dataDir(), id);
 	}
 
 	Path specDir(long id) {
