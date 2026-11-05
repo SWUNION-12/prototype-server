@@ -1,0 +1,16 @@
+[Unit]
+Description=SWUNION lab server
+After=network-online.target docker.service swunion-firewall.service
+Requires=docker.service
+Wants=network-online.target
+[Service]
+User=ubuntu
+Group=ubuntu
+SupplementaryGroups=docker
+WorkingDirectory=/home/ubuntu/swunion
+EnvironmentFile=/home/ubuntu/swunion/lab.env
+ExecStart=/usr/bin/java -jar /home/ubuntu/swunion/lab.jar
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

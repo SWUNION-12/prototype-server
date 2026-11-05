@@ -1,0 +1,14 @@
+your-name.duckdns.org {
+	encode gzip zstd
+	# 학생 IDE: Docker가 고르는 호스트 포트 범위(32768-60999)만 받는다. 다른 로컬 포트로는 프록시하지 않는다.
+	@ideBare path_regexp ideBare ^/ide/(3276[89]|327[7-9][0-9]|32[89][0-9][0-9]|3[3-9][0-9]{3}|[45][0-9]{4}|60[0-9]{3})$
+	redir @ideBare {path}/ 308
+	@ide path_regexp ide ^/ide/(3276[89]|327[7-9][0-9]|32[89][0-9][0-9]|3[3-9][0-9]{3}|[45][0-9]{4}|60[0-9]{3})(/.*)$
+	handle @ide {
+		uri strip_prefix /ide/{re.ide.1}
+		reverse_proxy 127.0.0.1:{re.ide.1}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=SWUNION container firewall rules
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/swunion-firewall.sh
+[Install]
+WantedBy=multi-user.target docker.service
