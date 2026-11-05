@@ -94,7 +94,7 @@ function HomeBody() {
   const showToast = useToast();
   const isEndedTab = params.get("tab") === "ended";
   const query = (params.get("q") ?? "").trim().toLowerCase();
-  const { data: list, error } = usePoll(courses.list, 3000, (e) => e instanceof ApiError && e.status === 401);
+  const { data: list, error } = usePoll(courses.list, 2000, (e) => e instanceof ApiError && e.status === 401);
 
   const inTab = (list ?? []).filter((c) => (c.status === "ENDED") === isEndedTab);
   const shown = inTab.filter((c) => !query || c.name.toLowerCase().includes(query));

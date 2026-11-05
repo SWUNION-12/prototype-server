@@ -94,7 +94,7 @@ function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "se
   const fetcher = useCallback(() => courses.dashboard(courseId), [courseId]);
   const { data, error, refresh } = usePoll(
     fetcher,
-    3000,
+    2000,
     (e) => e instanceof ApiError && (e.status === 404 || e.status === 401),
   );
   const [deleted, setDeleted] = useState<DeleteResult | null>(null);
