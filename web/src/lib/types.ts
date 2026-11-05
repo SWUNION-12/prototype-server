@@ -93,7 +93,8 @@ export type Me = {
   name: string;
   courseName: string;
   courseStatus: CourseStatus;
-  ideUrl: string;
+  // 컨테이너에 포트 기록이 없으면(만드는 중, 멈춤) null이다.
+  ideUrl: string | null;
   // password 방식 세션에만 있다. 없으면(proxy 방식) 비밀번호 칸을 보이지 않는다.
   idePassword?: string;
   envStatus: EnvStatus;

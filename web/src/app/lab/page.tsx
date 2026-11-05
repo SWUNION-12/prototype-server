@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CloseIcon, LaptopIcon } from "@/components/icons";
 import { IdeFrame } from "@/components/lab/IdeFrame";
@@ -45,9 +46,28 @@ function Banner({ status = "warning", title, text, onDismiss }: {
 }
 
 function Lab({ resumed }: { resumed: boolean }) {
+  const router = useRouter();
   const { data: me, error } = usePoll(student.me, 5000, (e) => e instanceof ApiError && e.status === 404);
   const [isLocalOpen, setIsLocalOpen] = useState(false);
   const [resumedDismissed, setResumedDismissed] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  async function leave() {
+    setIsLeaving(true);
+    setLeaveError(null);
+    try {
+      await student.logout();
+    } catch (e) {
+      // 404면 쿠키가 이미 없어 나가도 된다. 그 밖의 실패는 쿠키가 남아 있으니 알리고 화면에 둔다.
+      if (!(e instanceof ApiError && e.status === 404)) {
+        setLeaveError(e instanceof ApiError ? e.message : "나가지 못했습니다.");
+        setIsLeaving(false);
+        return;
+      }
+    }
+    router.replace("/join");
+  }
 
   if (error instanceof ApiError && error.status === 404) return <Lost />;
 
@@ -64,7 +84,9 @@ function Lab({ resumed }: { resumed: boolean }) {
   }
 
   const isEnded = me.courseStatus === "ENDED";
-  const isIdeUrlSafe = /^https?:\/\/\S+\/$/.test(me.ideUrl);
+  // 컨테이너에 포트 기록이 없으면(만드는 중, 멈춤) 서버가 null을 준다.
+  const ideUrl = me.ideUrl;
+  const isIdeUrlSafe = ideUrl != null && /^https?:\/\/\S+\/$/.test(ideUrl);
 
   return (
     <div className="lab">
@@ -83,9 +105,15 @@ function Lab({ resumed }: { resumed: boolean }) {
           >
             <LaptopIcon />내 PC로 이어가기
           </button>
+          <button type="button" className="btn btn--sm btn--ghost" disabled={isLeaving} onClick={leave}>
+            나가기
+          </button>
         </div>
       </header>
 
+      {leaveError != null && (
+        <Banner status="error" title="나가지 못했습니다." text={leaveError} onDismiss={() => setLeaveError(null)} />
+      )}
       {error != null && <Banner title="서버에 연결하지 못했습니다. 다시 시도하고 있어요." />}
       {me.envStatus === "MISMATCH" && me.issuesText.length > 0 && (
         <Banner title="내 환경이 수업과 다릅니다" text={me.issuesText.join(" · ")} />
@@ -114,9 +142,13 @@ function Lab({ resumed }: { resumed: boolean }) {
               </a>
             </div>
           ) : isIdeUrlSafe ? (
-            <IdeFrame ideUrl={me.ideUrl} password={me.idePassword} />
+            <IdeFrame ideUrl={ideUrl} password={me.idePassword} />
           ) : (
-            <div className="state">IDE 주소를 확인할 수 없습니다. 선생님에게 알려 주세요.</div>
+            <div className="state">
+              {ideUrl == null
+                ? "IDE를 아직 열 수 없습니다. 환경을 준비하는 중이거나 멈춰 있을 수 있어요. 계속되면 선생님에게 알려 주세요."
+                : "IDE 주소를 확인할 수 없습니다. 선생님에게 알려 주세요."}
+            </div>
           )}
         </section>
 
