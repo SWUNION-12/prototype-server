@@ -24,19 +24,13 @@ const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
 const noopSubscribe = () => () => {};
 
 // CodeBlock의 복사 버튼은 Clipboard API만 쓰고 대체 처리를 끼울 자리가 없다(onCopy는 복사 뒤 알림일 뿐이다).
-// http로 들어와 보안 컨텍스트가 아니면 버튼이 조용히 실패하므로, 그때는 직접 선택해 복사하라고 알린다.
+// http로 들어와 보안 컨텍스트가 아니면 버튼이 조용히 실패하므로, 그때는 패널 위에서 한 번 직접 선택해 복사하라고 알린다.
+function useCanCopy() {
+  return useSyncExternalStore(noopSubscribe, () => window.isSecureContext, () => true);
+}
+
 function Command({ code }: { code: string }) {
-  const canCopy = useSyncExternalStore(noopSubscribe, () => window.isSecureContext, () => true);
-  return (
-    <VStack gap={1}>
-      <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />
-      {!canCopy && (
-        <Text type="supporting" role="status">
-          복사 버튼이 동작하지 않을 수 있어요. 직접 선택해 복사하세요.
-        </Text>
-      )}
-    </VStack>
-  );
+  return <CodeBlock code={code} language="bash" hasLanguageLabel={false} isWrapped width="100%" size="sm" />;
 }
 
 function Steps({ token, os, info }: { token: string; os: Os; info: InstallInfo }) {
@@ -174,6 +168,7 @@ export function LocalPanel({ token }: { token: string }) {
     };
   }, [token, os]);
 
+  const canCopy = useCanCopy();
   const info = loaded?.os === os ? loaded.info : null;
   const errorText = error?.os === os ? error.text : null;
 
@@ -188,6 +183,12 @@ export function LocalPanel({ token }: { token: string }) {
         <SegmentedControlItem value="macos" label="macOS" />
         <SegmentedControlItem value="windows" label="Windows" />
       </SegmentedControl>
+
+      {!canCopy && (
+        <Text type="supporting" role="status">
+          복사 버튼이 동작하지 않을 수 있어요. 명령은 직접 선택해 복사하세요.
+        </Text>
+      )}
 
       {errorText && <Banner status="error" title={errorText} />}
       {!info && !errorText && <Spinner label="불러오는 중" />}
