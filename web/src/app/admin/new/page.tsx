@@ -200,7 +200,7 @@ export default function NewProjectPage() {
         pythonVersion: python,
         packages: packages.join("\n"),
       });
-      router.push(`/admin/courses/${course.id}/students`);
+      router.push(`/admin/course?id=${course.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "프로젝트를 만들지 못했습니다.");
       setBusy(false);

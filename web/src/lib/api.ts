@@ -1,4 +1,3 @@
-import { clearCredentials, encodeBasic, getCredentials } from "./auth";
 import type {
   Course,
   Dashboard,
@@ -17,16 +16,11 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { body?: unknown; basic?: string };
+type Options = { body?: unknown };
 
-async function request<T>(method: string, url: string, { body, basic }: Options = {}): Promise<T> {
+async function request<T>(method: string, url: string, { body }: Options = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (basic) {
-    headers.Authorization = `Basic ${basic}`;
-    // Spring Security는 이 헤더가 있으면 WWW-Authenticate를 빼서 브라우저 로그인 창을 띄우지 않는다.
-    headers["X-Requested-With"] = "XMLHttpRequest";
-  }
 
   let res: Response;
   try {
@@ -60,29 +54,15 @@ async function request<T>(method: string, url: string, { body, basic }: Options 
 
 // ---- 강사 ----
 
+// 강사 계정은 브라우저 로그인 창이 받아 같은 주소의 요청에 알아서 붙인다. 화면 코드는 계정을 만지지 않는다.
+// 401은 이미 열린 화면에서 계정이 사라졌을 때뿐이라, 이동하지 않고 새로고침 안내만 한다.
 function instructor<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const basic = getCredentials()?.basic;
-  return request<T>(method, url, { body, basic }).catch((e: unknown) => {
+  return request<T>(method, url, { body }).catch((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) {
-      clearCredentials();
-      window.location.assign("/admin/login");
+      throw new ApiError(401, "강사 로그인이 필요합니다. 페이지를 새로고침해 로그인해 주세요.");
     }
     throw e;
   });
-}
-
-/** 서버에 로그인 API가 없어 강사 API를 한 번 불러 계정을 확인한다. */
-export async function verifyLogin(username: string, password: string): Promise<string> {
-  const basic = encodeBasic(username, password);
-  try {
-    await request("GET", "/api/courses", { basic });
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 401) {
-      throw new ApiError(401, "아이디 또는 비밀번호를 확인해 주세요.");
-    }
-    throw e;
-  }
-  return basic;
 }
 
 export const courses = {

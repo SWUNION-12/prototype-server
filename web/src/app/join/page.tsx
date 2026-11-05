@@ -31,7 +31,7 @@ function JoinForm() {
     setError(null);
     try {
       const { token } = await student.join({ entryCode: code.trim(), name: name.trim(), pin });
-      router.replace(`/lab/${token}`);
+      router.replace(`/lab?t=${encodeURIComponent(token)}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "입장하지 못했습니다.");
       setBusy(false);

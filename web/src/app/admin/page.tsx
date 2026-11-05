@@ -20,14 +20,13 @@ import { CourseBadge } from "@/components/StatusBadge";
 import { ApiError, courses } from "@/lib/api";
 import { studentCountLabel } from "@/lib/display";
 import type { Course } from "@/lib/types";
-import { useCredentials } from "@/lib/use-credentials";
 import { usePoll } from "@/lib/use-poll";
 
 function CourseCard({ course }: { course: Course }) {
   return (
     <ClickableCard
       label={`${course.name} 열기`}
-      href={`/admin/courses/${course.id}/students`}
+      href={`/admin/course?id=${course.id}`}
       padding={6}
       height="100%"
     >
@@ -58,7 +57,6 @@ function CourseCard({ course }: { course: Course }) {
 }
 
 export default function AdminHomePage() {
-  const credentials = useCredentials();
   const { data: list, error } = usePoll(courses.list, 3000);
 
   return (
@@ -66,7 +64,7 @@ export default function AdminHomePage() {
       <AppHeader />
       <VStack as="main" className="page" gap={6}>
         <HStack hAlign="between" vAlign="center" wrap="wrap" gap={4}>
-          <Heading level={1}>환영합니다, {credentials?.username}님</Heading>
+          <Heading level={1}>환영합니다</Heading>
           <Button
             variant="primary"
             label="프로젝트 생성하기"

@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -n mock,next \"node mock/server.mjs --upstream=http://localhost:8080\" \"next dev\"",
-    "dev:mock": "concurrently -k -n mock,next \"node mock/server.mjs\" \"next dev\"",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "astryx": "astryx"
   },
   "dependencies": {
@@ -23,7 +22,6 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "concurrently": "^10.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "typescript": "^5"

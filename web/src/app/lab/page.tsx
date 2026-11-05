@@ -11,8 +11,8 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
-import { useParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useState } from "react";
 import { HelpIcon, LaptopIcon } from "@/components/icons";
 import { HelpPanel } from "@/components/lab/HelpPanel";
 import { IdeFrame } from "@/components/lab/IdeFrame";
@@ -38,8 +38,8 @@ function Lost() {
   );
 }
 
-export default function LabPage() {
-  const { token } = useParams<{ token: string }>();
+// 정적 빌드에서는 경로 값을 쓸 수 없어 토큰을 쿼리(/lab?t=...)로 받는다.
+function Lab({ token }: { token: string }) {
   const fetcher = useCallback(() => student.me(token), [token]);
   const { data: me, error, refresh } = usePoll(
     fetcher,
@@ -145,5 +145,18 @@ export default function LabPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function LabEntry() {
+  const token = useSearchParams().get("t");
+  return token ? <Lab token={token} /> : <Lost />;
+}
+
+export default function LabPage() {
+  return (
+    <Suspense>
+      <LabEntry />
+    </Suspense>
   );
 }

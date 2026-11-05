@@ -1,7 +1,6 @@
 import type { Classification, CourseStatus, EnvIssue, EnvStatus, StudentRow } from "./types";
 
-/** 제품명 미정(PRD). 이름이 정해지면 여기만 바꾼다. */
-export const SERVICE_NAME = "[서비스명]";
+export const SERVICE_NAME = "코딩책상";
 
 export type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 

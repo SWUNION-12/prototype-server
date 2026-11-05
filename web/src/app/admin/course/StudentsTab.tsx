@@ -114,7 +114,7 @@ function ConnectionCell({ student }: { student: StudentRow }) {
   );
 }
 
-export default function StudentsPage() {
+export function StudentsTab() {
   const { courseId, dashboard, refresh } = useCourse();
   const showToast = useToast();
   const [filter, setFilter] = useState("all");

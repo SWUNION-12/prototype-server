@@ -10,8 +10,8 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { useToast } from "@astryxdesign/core/Toast";
 import { VStack } from "@astryxdesign/core/VStack";
-import { useParams, usePathname } from "next/navigation";
-import { type ReactNode, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback } from "react";
 import { CourseProvider } from "@/components/admin/CourseContext";
 import { ProvisioningProgress } from "@/components/admin/ProvisioningProgress";
 import { AppHeader } from "@/components/AppHeader";
@@ -19,6 +19,8 @@ import { ApiError, courses } from "@/lib/api";
 import { studentCountLabel } from "@/lib/display";
 import type { Dashboard } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+import { SettingsTab } from "./SettingsTab";
+import { StudentsTab } from "./StudentsTab";
 
 function EntryInfo({ entryCode }: { entryCode: string }) {
   const showToast = useToast();
@@ -84,11 +86,8 @@ function StatusBanner({ dashboard }: { dashboard: Dashboard }) {
   return null;
 }
 
-export default function CourseLayout({ children }: { children: ReactNode }) {
-  const params = useParams<{ id: string }>();
-  const pathname = usePathname();
-  const courseId = Number(params.id);
-
+// 정적 빌드에서는 경로 값을 쓸 수 없어 수업 번호와 탭을 쿼리(?id=1&tab=settings)로 받는다.
+function CourseView({ courseId, tab }: { courseId: number; tab: "students" | "settings" }) {
   const fetcher = useCallback(() => courses.dashboard(courseId), [courseId]);
   const { data, error, refresh } = usePoll(
     fetcher,
@@ -96,8 +95,7 @@ export default function CourseLayout({ children }: { children: ReactNode }) {
     (e) => e instanceof ApiError && e.status === 404,
   );
 
-  const base = `/admin/courses/${courseId}`;
-  const tab = pathname.endsWith("/settings") ? "settings" : "students";
+  const base = `/admin/course?id=${courseId}`;
 
   return (
     <VStack className="app-root">
@@ -133,10 +131,10 @@ export default function CourseLayout({ children }: { children: ReactNode }) {
           <>
             <StatusBanner dashboard={data} />
             <TabList value={tab} onChange={() => {}} hasDivider>
-              <Tab value="students" label="학생 목록" href={`${base}/students`} />
-              <Tab value="settings" label="프로젝트 설정" href={`${base}/settings`} />
+              <Tab value="students" label="학생 목록" href={base} />
+              <Tab value="settings" label="프로젝트 설정" href={`${base}&tab=settings`} />
             </TabList>
-            <CourseProvider value={{ courseId, dashboard: data, refresh }}>{children}</CourseProvider>
+            <CourseProvider value={{ courseId, dashboard: data, refresh }}>{tab === "settings" ? <SettingsTab /> : <StudentsTab />}</CourseProvider>
           </>
         ) : error != null ? (
           <Banner
@@ -154,5 +152,37 @@ export default function CourseLayout({ children }: { children: ReactNode }) {
         )}
       </VStack>
     </VStack>
+  );
+}
+
+function CourseEntry() {
+  const params = useSearchParams();
+  const raw = params.get("id") ?? "";
+  const courseId = /^\d+$/.test(raw) ? Number(raw) : null;
+  if (courseId === null) {
+    return (
+      <VStack className="app-root">
+        <AppHeader />
+        <VStack as="main" className="page page--detail" gap={6}>
+          <Banner
+            status="error"
+            title="수업 주소가 올바르지 않습니다."
+            description="강사 홈에서 수업을 골라 다시 열어 주세요."
+          />
+          <HStack>
+            <Button label="강사 홈으로" href="/admin" />
+          </HStack>
+        </VStack>
+      </VStack>
+    );
+  }
+  return <CourseView courseId={courseId} tab={params.get("tab") === "settings" ? "settings" : "students"} />;
+}
+
+export default function CoursePage() {
+  return (
+    <Suspense>
+      <CourseEntry />
+    </Suspense>
   );
 }

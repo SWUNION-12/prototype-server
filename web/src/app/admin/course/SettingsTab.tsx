@@ -164,7 +164,7 @@ function EndCourse() {
   );
 }
 
-export default function SettingsPage() {
+export function SettingsTab() {
   return (
     <VStack gap={6} maxWidth={640}>
       <BasicInfo />
