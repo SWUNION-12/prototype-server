@@ -6,7 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -254,7 +254,7 @@ class IdeControllerTest {
 
 		// 컨테이너는 강사 계정 없이 부른다. 강사 계정이 있어도 키가 없으면 열리지 않는다.
 		readStatus(a.key()).andExpect(status().isOk());
-		mvc.perform(get("/api/ide/status").with(httpBasic(props.instructorUsername(), props.instructorPassword())))
+		mvc.perform(get("/api/ide/status").with(user(props.instructorUsername())))
 				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.error").value("인증 정보가 없습니다"));
 	}
 

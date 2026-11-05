@@ -1,7 +1,8 @@
 package com.swunion.lab.course;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -36,14 +37,14 @@ class CourseControllerTest {
 
 	@Test
 	void createsAndReadsCourse() throws Exception {
-		mvc.perform(post("/api/courses").with(httpBasic("instructor", "instructor"))
+		mvc.perform(post("/api/courses").with(user("instructor")).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"name\":\"파이썬 기초\",\"pythonVersion\":\"3.12\",\"packages\":\"six==1.16.0\\nrich\"}"))
 				.andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("LOCKING"))
 				.andExpect(jsonPath("$.packages[0]").value("six==1.16.0")).andExpect(jsonPath("$.packages[1]").value("rich"))
 				.andExpect(jsonPath("$.studentCount").value(0))
 				.andExpect(jsonPath("$.imageName").doesNotExist());
-		mvc.perform(get("/api/courses").with(httpBasic("instructor", "instructor"))).andExpect(status().isOk());
+		mvc.perform(get("/api/courses").with(user("instructor"))).andExpect(status().isOk());
 	}
 
 	@Test
@@ -53,19 +54,19 @@ class CourseControllerTest {
 		sessions.save(new StudentSession(two, "영희", "tok-count-2", "pw"));
 		Course none = courses.save(new Course("학생 없음", "3.12", "six==1.16.0"));
 
-		mvc.perform(get("/api/courses").with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses").with(user("instructor")))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[?(@.id == " + two.getId() + ")].studentCount").value(2))
 				.andExpect(jsonPath("$[?(@.id == " + none.getId() + ")].studentCount").value(0));
-		mvc.perform(get("/api/courses/" + two.getId()).with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/" + two.getId()).with(user("instructor")))
 				.andExpect(jsonPath("$.studentCount").value(2));
-		mvc.perform(get("/api/courses/" + none.getId()).with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/" + none.getId()).with(user("instructor")))
 				.andExpect(jsonPath("$.studentCount").value(0));
 	}
 
 	@Test
 	void invalidSpecIs400() throws Exception {
-		mvc.perform(post("/api/courses").with(httpBasic("instructor", "instructor"))
+		mvc.perform(post("/api/courses").with(user("instructor")).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"name\":\"x\",\"pythonVersion\":\"2.7\",\"packages\":\"six\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(containsString("파이썬")));
@@ -73,7 +74,7 @@ class CourseControllerTest {
 
 	@Test
 	void unknownIdIs404() throws Exception {
-		mvc.perform(get("/api/courses/99999").with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/99999").with(user("instructor")))
 				.andExpect(status().isNotFound());
 	}
 

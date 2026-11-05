@@ -9,6 +9,23 @@ spring:
     hibernate:
       ddl-auto: update
 
+server:
+  # 배포는 Caddy(HTTPS)가 앞에 선다. Caddy가 보내는 X-Forwarded-Proto를 믿어야 https 요청에서 세션·CSRF 쿠키에 Secure가 붙는다.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      # 같은 머신의 Caddy(127.0.0.1)만 믿는다. 기본값은 사설 대역 전체라 Docker 브리지에서 오는 학생 컨테이너의 헤더까지 믿는다.
+      internal-proxies: 127.0.0.0/8, ::1/128
+  servlet:
+    session:
+      # 강사 로그인 세션. 마지막 요청 뒤 8시간 동안 유지된다(화면이 주기 조회하는 동안은 끊기지 않는다).
+      # 세션은 메모리에만 있어 서버를 다시 켜면 다시 로그인한다.
+      timeout: 8h
+      tracking-modes: cookie
+      cookie:
+        http-only: true
+        same-site: lax
+
 lab:
   instructor-username: ${INSTRUCTOR_USERNAME:instructor}
   # 기본값이면 시작할 때 WARN을 남긴다. 학생 컨테이너가 이 서버의 강사 API에 닿으므로 학생에게 IDE를 주기 전에 바꾼다.

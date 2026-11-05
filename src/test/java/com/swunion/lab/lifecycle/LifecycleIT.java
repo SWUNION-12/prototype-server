@@ -1,7 +1,8 @@
 package com.swunion.lab.lifecycle;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -421,7 +422,7 @@ class LifecycleIT {
 	}
 
 	private MockHttpServletRequestBuilder asInstructor(MockHttpServletRequestBuilder b) {
-		return b.with(httpBasic(props.instructorUsername(), props.instructorPassword()));
+		return b.with(user(props.instructorUsername())).with(csrf());
 	}
 
 	@SuppressWarnings("unchecked")

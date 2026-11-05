@@ -9,7 +9,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -115,7 +117,7 @@ class LifecycleControllerTest {
 	}
 
 	private MockHttpServletRequestBuilder asInstructor(MockHttpServletRequestBuilder b) {
-		return b.with(httpBasic("instructor", "instructor"));
+		return b.with(user("instructor")).with(csrf());
 	}
 
 	private static MockHttpServletRequestBuilder deleteCourse(long id, String body) {
@@ -124,12 +126,14 @@ class LifecycleControllerTest {
 
 	@Test
 	void allLifecycleEndpointsNeedInstructor() throws Exception {
-		mvc.perform(post("/api/courses/1/resume")).andExpect(status().isUnauthorized());
-		mvc.perform(deleteCourse(1, "{\"confirmName\":\"x\"}")).andExpect(status().isUnauthorized());
-		mvc.perform(post("/api/courses/1/sessions/1/restart")).andExpect(status().isUnauthorized());
-		mvc.perform(delete("/api/courses/1/sessions/1")).andExpect(status().isUnauthorized());
-		mvc.perform(post("/api/courses/1/sessions/1/reset-pin")).andExpect(status().isUnauthorized());
-		mvc.perform(post("/api/courses/1/resume").with(httpBasic("instructor", "wrong")))
+		// CSRF 값은 붙여 보낸다. 없으면 인증 검사 전에 403이 나서 로그인 요구를 확인할 수 없다.
+		mvc.perform(post("/api/courses/1/resume").with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(deleteCourse(1, "{\"confirmName\":\"x\"}").with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/courses/1/sessions/1/restart").with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(delete("/api/courses/1/sessions/1").with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/courses/1/sessions/1/reset-pin").with(csrf())).andExpect(status().isUnauthorized());
+		// 강사 계정은 로그인 세션으로만 받는다. 맞는 계정이라도 Basic 헤더로는 들어오지 못한다.
+		mvc.perform(post("/api/courses/1/resume").with(httpBasic("instructor", "instructor")).with(csrf()))
 				.andExpect(status().isUnauthorized());
 		verify(docker, never()).remove(anyString());
 	}

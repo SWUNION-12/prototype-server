@@ -91,13 +91,14 @@ class WebConfigTest {
 		};
 		WebConfig.HtmlFallbackResolver resolver = new WebConfig.HtmlFallbackResolver();
 
-		resolver.resolveResource(null, "admin/course", List.of(), chain);
+		resolver.resolveResource(null, "instructor/course", List.of(), chain);
 		resolver.resolveResource(null, "v1.2/app", List.of(), chain);
 		resolver.resolveResource(null, "_next/static/app.js", List.of(), chain);
-		resolver.resolveResource(null, "admin.txt", List.of(), chain);
-		resolver.resolveResource(null, "admin/", List.of(), chain);
+		resolver.resolveResource(null, "instructor.txt", List.of(), chain);
+		resolver.resolveResource(null, "instructor/", List.of(), chain);
 
 		// 점 없는 경로 자체(디렉터리일 수 있다)와 끝 슬래시 경로는 찾지 않는다.
-		assertThat(tried).containsExactly("admin/course.html", "v1.2/app.html", "_next/static/app.js", "admin.txt");
+		assertThat(tried).containsExactly("instructor/course.html", "v1.2/app.html", "_next/static/app.js",
+				"instructor.txt");
 	}
 }

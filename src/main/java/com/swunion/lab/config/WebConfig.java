@@ -14,7 +14,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.ResourceResolver;
 import org.springframework.web.servlet.resource.ResourceResolverChain;
 
-// 화면은 Next.js 정적 빌드(static/)다. /join, /admin/course처럼 확장자 없는 주소를 join.html, admin/course.html로 내보낸다.
+// 화면은 Next.js 정적 빌드(static/)다. /join, /instructor/course처럼 확장자 없는 주소를 join.html, instructor/course.html로 내보낸다.
 // 컨트롤러(/api/**, /l/**)가 리소스 핸들러보다 먼저 매핑되므로 여기까지 오는 요청은 컨트롤러가 받지 않은 주소뿐이다.
 // Boot 자동 설정보다 먼저 /**를 등록해야 Boot가 같은 패턴의 기본 핸들러를 따로 만들지 않고 물러난다.
 @Configuration(proxyBeanMethods = false)
@@ -36,7 +36,7 @@ public class WebConfig implements WebMvcConfigurer {
 		registry.addRedirectViewController("/", "/join").setStatusCode(HttpStatus.FOUND);
 	}
 
-	// 정적 빌드에는 확장자 없는 파일이 없고 같은 이름의 디렉터리(admin/ 옆 admin.html)만 있다. 그래서 마지막 조각에 점이 없으면
+	// 정적 빌드에는 확장자 없는 파일이 없고 같은 이름의 디렉터리(instructor/ 옆 instructor.html)만 있다. 그래서 마지막 조각에 점이 없으면
 	// 그 경로 자체는 찾지 않고 .html만 찾는다. 압축 풀린 classpath(로컬 실행, 테스트)에서는 디렉터리가 목록으로 읽히기 때문이다.
 	static final class HtmlFallbackResolver implements ResourceResolver {
 

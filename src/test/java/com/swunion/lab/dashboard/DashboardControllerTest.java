@@ -5,7 +5,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -95,17 +96,17 @@ class DashboardControllerTest {
 	@Test
 	void requiresInstructorAuth() throws Exception {
 		mvc.perform(get("/api/courses/1/dashboard")).andExpect(status().isUnauthorized());
-		mvc.perform(post("/api/courses/1/sessions/1/resolve")).andExpect(status().isUnauthorized());
-		mvc.perform(post("/api/courses/1/end")).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/courses/1/sessions/1/resolve").with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/courses/1/end").with(csrf())).andExpect(status().isUnauthorized());
 	}
 
 	@Test
 	void unknownCourseIs404() throws Exception {
-		mvc.perform(get("/api/courses/987654/dashboard").with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/987654/dashboard").with(user("instructor")))
 				.andExpect(status().isNotFound());
-		mvc.perform(post("/api/courses/987654/sessions/1/resolve").with(httpBasic("instructor", "instructor")))
+		mvc.perform(post("/api/courses/987654/sessions/1/resolve").with(user("instructor")).with(csrf()))
 				.andExpect(status().isNotFound());
-		mvc.perform(post("/api/courses/987654/end").with(httpBasic("instructor", "instructor")))
+		mvc.perform(post("/api/courses/987654/end").with(user("instructor")).with(csrf()))
 				.andExpect(status().isNotFound());
 	}
 
@@ -129,7 +130,7 @@ class DashboardControllerTest {
 		li.setFailedJson("[\"numpy\"]");
 		locals.save(li);
 
-		String body = mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(httpBasic("instructor", "instructor")))
+		String body = mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(user("instructor")))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.course.id").value(c.getId()))
 				.andExpect(jsonPath("$.course.status").value("READY"))
@@ -178,11 +179,11 @@ class DashboardControllerTest {
 		sessions.updateNeedsHelp(theirs.getId(), true, "막힘");
 
 		mvc.perform(post("/api/courses/" + c.getId() + "/sessions/" + theirs.getId() + "/resolve")
-				.with(httpBasic("instructor", "instructor"))).andExpect(status().isNotFound());
+				.with(user("instructor")).with(csrf())).andExpect(status().isNotFound());
 		mvc.perform(post("/api/courses/" + c.getId() + "/sessions/" + mine.getId() + "/resolve")
-				.with(httpBasic("instructor", "instructor"))).andExpect(status().isNoContent());
+				.with(user("instructor")).with(csrf())).andExpect(status().isNoContent());
 
-		mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(user("instructor")))
 				.andExpect(jsonPath("$.students[0].needsHelp").value(false))
 				.andExpect(jsonPath("$.students[0].needsHelpReason").doesNotExist());
 		assertThat(sessions.findById(theirs.getId()).orElseThrow().isNeedsHelp()).isTrue();
@@ -195,7 +196,7 @@ class DashboardControllerTest {
 		student(c, "가영", "e");
 		student(c, "나리", "f");
 
-		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(httpBasic("instructor", "instructor")))
+		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(user("instructor")).with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("ENDED"))
 				.andExpect(jsonPath("$.stopped").value(2))
@@ -205,14 +206,14 @@ class DashboardControllerTest {
 		verify(docker, never()).removeVolume(anyString());
 
 		// 이미 종료된 수업도 다시 종료할 수 있다. 남아 있거나 되살아난 컨테이너를 다시 멈춘다.
-		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(httpBasic("instructor", "instructor")))
+		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(user("instructor")).with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("ENDED"))
 				.andExpect(jsonPath("$.stopped").value(2))
 				.andExpect(jsonPath("$.failed").value(0));
 		verify(docker, times(2)).stop(CONTAINER_ID + "e");
 		verify(docker, times(2)).stop(CONTAINER_ID + "f");
-		mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(httpBasic("instructor", "instructor")))
+		mvc.perform(get("/api/courses/" + c.getId() + "/dashboard").with(user("instructor")))
 				.andExpect(jsonPath("$.course.status").value("ENDED"))
 				.andExpect(jsonPath("$.students[0].containerRunning").value(false));
 	}
@@ -222,7 +223,7 @@ class DashboardControllerTest {
 		Course c = course("CTRL05", CourseStatus.BUILDING);
 		student(c, "가영", "g");
 
-		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(httpBasic("instructor", "instructor")))
+		mvc.perform(post("/api/courses/" + c.getId() + "/end").with(user("instructor")).with(csrf()))
 				.andExpect(status().isConflict());
 
 		assertThat(courses.findById(c.getId()).orElseThrow().getStatus()).isEqualTo(CourseStatus.BUILDING);
